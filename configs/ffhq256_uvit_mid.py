@@ -11,6 +11,11 @@ def get_config():
 
     config.seed = 1234
     config.pred = 'noise_pred'
+    config.z_shape = (4, 32, 32)
+
+    config.autoencoder = d(
+        pretrained_path='assets/stable-diffusion/autoencoder_kl.pth'
+    )
 
     config.train = d(
         n_steps=500000,
@@ -18,7 +23,7 @@ def get_config():
         mode='uncond',
         log_interval=100,
         eval_interval=25000,
-        save_interval=50000,
+        save_interval=25000,
     )
 
     config.optimizer = d(
@@ -35,11 +40,12 @@ def get_config():
 
     config.nnet = d(
         name='uvit',
-        img_size=64,
-        patch_size=4,
-        embed_dim=512,
-        depth=12,
-        num_heads=8,
+        img_size=32,
+        patch_size=2,
+        in_chans=4,
+        embed_dim=768,
+        depth=16,
+        num_heads=12,
         mlp_ratio=4,
         qkv_bias=False,
         mlp_time_embed=False,
@@ -47,15 +53,15 @@ def get_config():
     )
 
     config.dataset = d(
-        name='celeba',
-        path='/data/clusterfs/mld/users/lanliu/mang/datasets/celeba64',  # /gpfs/work4/0/prjs0865/DCT/celeba
-        resolution=64,
+        name='ffhq256',
+        path='/home/mning2/datasets/ffhq256_jpg',  # /data/clusterfs/mld/users/lanliu/mang/datasets/ffhq256
+        resolution=256,
     )
 
     config.sample = d(
         sample_steps=50,
         n_samples=10000,
-        mini_batch_size=500,
+        mini_batch_size=50,  # the decoder is large
         algorithm='dpm_solver',
         path=''
     )

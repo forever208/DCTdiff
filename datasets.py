@@ -386,18 +386,13 @@ class CelebA(DatasetFactory):
         super().__init__()
 
         self.resolution = resolution
-
-        cx = 89
-        cy = 121
-        x1 = cy - 64
-        x2 = cy + 64
-        y1 = cx - 64
-        y2 = cx + 64
-
-        transform = transforms.Compose([Crop(x1, x2, y1, y2), transforms.Resize(self.resolution),
-                                        transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+        transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
                                         transforms.Normalize(0.5, 0.5)])
-        self.train = datasets.CelebA(root=path, split="train", target_type=[], transform=transform, download=True)
+        """
+        manually download dataset: https://drive.usercontent.google.com/download?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM&authuser=0
+        then do center crop to 64x64
+        """
+        self.train = datasets.ImageFolder(root=path, transform=transform)
         self.train = UnlabeledDataset(self.train)
 
     @property
@@ -406,7 +401,39 @@ class CelebA(DatasetFactory):
 
     @property
     def fid_stat(self):
-        return 'assets/fid_stats/fid_stats_celeba64_train_50000_ddim.npz'
+        # specify the fid_stats file that will be used for FID computation during the training
+        return 'assets/fid_stats/fid_stats_celeba64_all.npz'
+
+    @property
+    def has_label(self):
+        return False
+
+
+class FFHQ256(DatasetFactory):
+    r""" train: 162,770
+         val:   19,867
+         test:  19,962
+         shape: 3 * width * width
+    """
+
+    def __init__(self, path, resolution=256):
+        super().__init__()
+
+        self.resolution = resolution
+        transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+                                        transforms.Normalize(0.5, 0.5)])
+        self.train = datasets.ImageFolder(root=path, transform=transform)
+        self.train = UnlabeledDataset(self.train)
+
+    @property
+    def data_shape(self):
+        return 3, self.resolution, self.resolution
+
+    @property
+    def fid_stat(self):
+        # specify the fid_stats file that will be used for FID computation during the training
+        # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
+        return 'assets/fid_stats/fid_stats_ffhq256_jpg.npz'
 
     @property
     def has_label(self):
@@ -539,6 +566,8 @@ def get_dataset(name, **kwargs):
         return ImageNet512Features(**kwargs)
     elif name == 'celeba':
         return CelebA(**kwargs)
+    elif name == 'ffhq256':
+        return FFHQ256(**kwargs)
     elif name == 'mscoco256_features':
         return MSCOCO256Features(**kwargs)
     else:

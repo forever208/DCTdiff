@@ -17,6 +17,9 @@ from absl import logging
 import builtins
 import os
 import wandb
+wandb. init(mode="disabled")
+from datetime import timedelta
+from accelerate import InitProcessGroupKwargs
 
 
 def train(config):
@@ -25,7 +28,8 @@ def train(config):
         torch.backends.cudnn.deterministic = False
 
     mp.set_start_method('spawn')
-    accelerator = accelerate.Accelerator()
+    process_group_kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=3600))  # 1 hour
+    accelerator = accelerate.Accelerator(kwargs_handlers=[process_group_kwargs])
     device = accelerator.device
     accelerate.utils.set_seed(config.seed, device_specific=True)
     logging.info(f'Process {accelerator.process_index} using device: {device}')
@@ -34,30 +38,34 @@ def train(config):
     config = ml_collections.FrozenConfigDict(config)
 
     assert config.train.batch_size % accelerator.num_processes == 0
-    mini_batch_size = config.train.batch_size // accelerator.num_processes
+    mini_batch_size = config.train.batch_size // accelerator.num_processes  # batch per GPU
 
+    # log setting
     if accelerator.is_main_process:
         os.makedirs(config.ckpt_root, exist_ok=True)
         os.makedirs(config.sample_dir, exist_ok=True)
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        wandb.init(dir=os.path.abspath(config.workdir), project=f'uvit_{config.dataset.name}', config=config.to_dict(),
-                   name=config.hparams, job_type='train', mode='offline')
         utils.set_logger(log_level='info', fname=os.path.join(config.workdir, 'output.log'))
         logging.info(config)
     else:
         utils.set_logger(log_level='error')
         builtins.print = lambda *args: None
 
+    # Dataset and DataLoader
     dataset = get_dataset(**config.dataset)
     assert os.path.exists(dataset.fid_stat)
     train_dataset = dataset.get_split(split='train', labeled=config.train.mode == 'cond')
     train_dataset_loader = DataLoader(train_dataset, batch_size=mini_batch_size, shuffle=True, drop_last=True,
-                                      num_workers=8, pin_memory=True, persistent_workers=True)
+                                      num_workers=16, pin_memory=False, persistent_workers=True)
 
+    # keep track of training states (lr, opt, model)
     train_state = utils.initialize_train_state(config, device)
+
+    # wrap data_loader and model with accelerator for distributed training
     nnet, nnet_ema, optimizer, train_dataset_loader = accelerator.prepare(
-        train_state.nnet, train_state.nnet_ema, train_state.optimizer, train_dataset_loader)
+        train_state.nnet, train_state.nnet_ema, train_state.optimizer, train_dataset_loader
+    )
     lr_scheduler = train_state.lr_scheduler
     train_state.resume(config.ckpt_root)
 
@@ -68,11 +76,9 @@ def train(config):
 
     data_generator = get_data_generator()
 
-
     # set the score_model to train
     score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE())
     score_model_ema = sde.ScoreModel(nnet_ema, pred=config.pred, sde=sde.VPSDE())
-
 
     def train_step(_batch):
         _metrics = dict()
@@ -149,7 +155,6 @@ def train(config):
         return _fid.item()
 
     logging.info(f'Start fitting, step={train_state.step}, mixed_precision={config.mixed_precision}')
-
     step_fid = []
     while train_state.step < config.train.n_steps:
         nnet.train()
@@ -162,28 +167,57 @@ def train(config):
             logging.info(config.workdir)
             wandb.log(metrics, step=train_state.step)
 
+        # generate images for visualization
         if accelerator.is_main_process and train_state.step % config.train.eval_interval == 0:
-            logging.info('Save a grid of images...')
-            x_init = torch.randn(100, *dataset.data_shape, device=device)
+            logging.info('Save a grid of 36 images...')
+            x_init = torch.randn(36, *dataset.data_shape, device=device)
+
             if config.train.mode == 'uncond':
-                samples = sde.euler_maruyama(sde.ODE(score_model_ema), x_init=x_init, sample_steps=50)
+                kwargs = dict()
             elif config.train.mode == 'cond':
-                y = einops.repeat(torch.arange(10, device=device) % dataset.K, 'nrow -> (nrow ncol)', ncol=10)
-                samples = sde.euler_maruyama(sde.ODE(score_model_ema), x_init=x_init, sample_steps=50, y=y)
+                kwargs = dict(y=dataset.sample_label(36, device=device))
             else:
                 raise NotImplementedError
-            samples = make_grid(dataset.unpreprocess(samples), 10)
+
+            if config.sample.algorithm == 'euler_maruyama_sde':
+                samples = sde.euler_maruyama(sde.ReverseSDE(score_model_ema), x_init, config.sample.sample_steps,
+                                             **kwargs)
+            elif config.sample.algorithm == 'euler_maruyama_ode':
+                samples = sde.euler_maruyama(sde.ODE(score_model_ema), x_init, config.sample.sample_steps, **kwargs)
+            elif config.sample.algorithm == 'dpm_solver':
+                noise_schedule = NoiseScheduleVP(schedule='linear')
+                model_fn = model_wrapper(
+                    score_model_ema.noise_pred,
+                    noise_schedule,
+                    time_input_type='0',
+                    model_kwargs=kwargs
+                )
+                dpm_solver = DPM_Solver(model_fn, noise_schedule)
+                samples = dpm_solver.sample(
+                    x_init,
+                    steps=config.sample.sample_steps,
+                    eps=1e-4,
+                    adaptive_step_size=False,
+                    fast_version=True,
+                )
+            else:
+                raise NotImplementedError
+
+            samples = make_grid(dataset.unpreprocess(samples), 6)
             save_image(samples, os.path.join(config.sample_dir, f'{train_state.step}.png'))
             wandb.log({'samples': wandb.Image(samples)}, step=train_state.step)
             torch.cuda.empty_cache()
         accelerator.wait_for_everyone()
 
+        # save ckpt and compute FID
         if train_state.step % config.train.save_interval == 0 or train_state.step == config.train.n_steps:
             logging.info(f'Save and eval checkpoint {train_state.step}...')
             if accelerator.local_process_index == 0:
                 train_state.save(os.path.join(config.ckpt_root, f'{train_state.step}.ckpt'))
             accelerator.wait_for_everyone()
-            fid = eval_step(n_samples=10000, sample_steps=50, algorithm='dpm_solver')  # calculate fid of the saved checkpoint
+
+            # calculate fid of the saved checkpoint
+            fid = eval_step(n_samples=config.sample.n_samples, sample_steps=config.sample.sample_steps, algorithm=config.sample.algorithm)
             step_fid.append((train_state.step, fid))
             torch.cuda.empty_cache()
         accelerator.wait_for_everyone()
@@ -196,52 +230,23 @@ def train(config):
     del metrics
     accelerator.wait_for_everyone()
     eval_step(n_samples=config.sample.n_samples, sample_steps=config.sample.sample_steps, algorithm=config.sample.algorithm)
-
+    logging.info(f'all done!')
 
 
 from absl import flags
 from absl import app
 from ml_collections import config_flags
-import sys
-from pathlib import Path
 
 
 FLAGS = flags.FLAGS
-config_flags.DEFINE_config_file(
-    "config", None, "Training configuration.", lock_config=False)
+config_flags.DEFINE_config_file("config", None, "Training configuration.", lock_config=False)
 flags.mark_flags_as_required(["config"])
 flags.DEFINE_string("workdir", None, "Work unit directory.")
 
 
-def get_config_name():
-    argv = sys.argv
-    for i in range(1, len(argv)):
-        if argv[i].startswith('--config='):
-            return Path(argv[i].split('=')[-1]).stem
-
-
-def get_hparams():
-    argv = sys.argv
-    lst = []
-    for i in range(1, len(argv)):
-        assert '=' in argv[i]
-        if argv[i].startswith('--config.') and not argv[i].startswith('--config.dataset.path'):
-            hparam, val = argv[i].split('=')
-            hparam = hparam.split('.')[-1]
-            if hparam.endswith('path'):
-                val = Path(val).stem
-            lst.append(f'{hparam}={val}')
-    hparams = '-'.join(lst)
-    if hparams == '':
-        hparams = 'default'
-    return hparams
-
-
 def main(argv):
     config = FLAGS.config
-    config.config_name = get_config_name()
-    config.hparams = get_hparams()
-    config.workdir = FLAGS.workdir or os.path.join('workdir', config.config_name, config.hparams)
+    config.workdir = FLAGS.workdir or 'exp_train'
     config.ckpt_root = os.path.join(config.workdir, 'ckpts')
     config.sample_dir = os.path.join(config.workdir, 'samples')
     train(config)

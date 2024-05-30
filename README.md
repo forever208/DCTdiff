@@ -63,12 +63,18 @@ Training speed and memory of U-ViT-H/2 on ImageNet 256x256 using a batch size of
 ## Dependency
 
 ```sh
-pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu116  # install torch-1.13.1
-pip install accelerate==0.12.0 absl-py ml_collections einops wandb ftfy==6.1.1 transformers==4.23.1
+conda create -n uvit2 python==3.9
+conda activate uvit2
+
+pip install matplotlib
+pip install accelerate==0.33.0  (auto install pytorch 2.4)
+pip install absl-py ml_collections einops wandb ftfy==6.1.1 transformers==4.23.1
+pip install opencv-python
+pip install scipy
 
 # xformers is optional, but it would greatly speed up the attention computation.
 pip install -U xformers
-pip install -U --pre triton
+pip install torchvision==0.19.0
 ```
 
 * This repo is based on [`timm==0.3.2`](https://github.com/rwightman/pytorch-image-models), for which a [fix](https://github.com/rwightman/pytorch-image-models/issues/420#issuecomment-776459842) is needed to work with PyTorch 1.8.1+. (Perhaps other versions also work, but I haven't tested it.)

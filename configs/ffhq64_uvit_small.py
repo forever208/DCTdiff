@@ -14,10 +14,10 @@ def get_config():
 
     config.train = d(
         n_steps=500000,
-        batch_size=256,
+        batch_size=16,
         mode='uncond',
-        log_interval=100,
-        eval_interval=25000,
+        log_interval=10,
+        eval_interval=50,
         save_interval=50000,
     )
 
@@ -47,16 +47,16 @@ def get_config():
     )
 
     config.dataset = d(
-        name='celeba',
-        path='/data/clusterfs/mld/users/lanliu/mang/datasets/celeba64',  # /gpfs/work4/0/prjs0865/DCT/celeba
+        name='ffhq64',
+        path='ffhq64_jpg',
         resolution=64,
     )
 
     config.sample = d(
-        sample_steps=50,
-        n_samples=10000,
+        sample_steps=1000,
+        n_samples=50000,
         mini_batch_size=500,
-        algorithm='dpm_solver',
+        algorithm='euler_maruyama_sde',
         path=''
     )
 

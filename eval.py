@@ -13,14 +13,12 @@ import builtins
 
 
 def evaluate(config):
-    if config.get('benchmark', False):
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.deterministic = False
-
     mp.set_start_method('spawn')
     accelerator = accelerate.Accelerator()
     device = accelerator.device
     accelerate.utils.set_seed(config.seed, device_specific=True)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
     logging.info(f'Process {accelerator.process_index} using device: {device}')
 
     config.mixed_precision = accelerator.mixed_precision
@@ -38,6 +36,7 @@ def evaluate(config):
     logging.info(f'load nnet from {config.nnet_path}')
     accelerator.unwrap_model(nnet).load_state_dict(torch.load(config.nnet_path, map_location='cpu'))
     nnet.eval()
+
     if 'cfg' in config.sample and config.sample.cfg and config.sample.scale > 0:  # classifier free guidance
         logging.info(f'Use classifier free guidance with scale={config.sample.scale}')
         def cfg_nnet(x, timesteps, y):
@@ -47,7 +46,6 @@ def evaluate(config):
         score_model = sde.ScoreModel(cfg_nnet, pred=config.pred, sde=sde.VPSDE())
     else:
         score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE())
-
 
     logging.info(config.sample)
     assert os.path.exists(dataset.fid_stat)
@@ -104,8 +102,7 @@ import os
 
 
 FLAGS = flags.FLAGS
-config_flags.DEFINE_config_file(
-    "config", None, "Training configuration.", lock_config=False)
+config_flags.DEFINE_config_file("config", None, "Training configuration.", lock_config=False)
 flags.mark_flags_as_required(["config"])
 flags.DEFINE_string("nnet_path", None, "The nnet to evaluate.")
 flags.DEFINE_string("output_path", None, "The path to output log.")

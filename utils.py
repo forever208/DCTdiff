@@ -163,7 +163,7 @@ def sample2dir(accelerator, path, n_samples, mini_batch_size, sample_fn, unprepr
         samples = accelerator.gather(samples.contiguous())[:_batch_size]
         if accelerator.is_main_process:
             for sample in samples:
-                save_image(sample, os.path.join(path, f"{idx}.png"))
+                save_image(sample, os.path.join(path, f"{idx}.jpg"))
                 idx += 1
 
 
