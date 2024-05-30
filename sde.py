@@ -267,13 +267,19 @@ def euler_maruyama(rsde, x_init, sample_steps, eps=1e-3, T=1, trace=None, verbos
     return x
 
 
-def LSimple(score_model: ScoreModel, x0, pred='noise_pred', **kwargs):
+def LSimple(score_model: ScoreModel, x0, pred='noise_pred', reweight=None, **kwargs):
     t, noise, xt = score_model.sde.sample(x0)
     if pred == 'noise_pred':
         noise_pred = score_model.noise_pred(xt, t, **kwargs)
-        return mos(noise - noise_pred)
+        loss = (noise - noise_pred).pow(2)  # (batch, tokens, dim)
+        loss = loss * reweight  # loss re-weighting
+        return loss.flatten(start_dim=1).mean(dim=-1)
+
     elif pred == 'x0_pred':
         x0_pred = score_model.x0_pred(xt, t, **kwargs)
-        return mos(x0 - x0_pred)
+        loss = (x0 - x0_pred).pow(2)
+        loss = loss * reweight  # loss re-weighting
+        return loss.flatten(start_dim=1).mean(dim=-1)
+
     else:
         raise NotImplementedError(pred)

@@ -10,6 +10,7 @@ import os
 import glob
 import einops
 import torchvision.transforms.functional as F
+import cv2
 
 
 class UnlabeledDataset(Dataset):
@@ -375,47 +376,458 @@ class Crop(object):
         )
 
 
-class CelebA(DatasetFactory):
-    r""" train: 162,770
-         val:   19,867
-         test:  19,962
-         shape: 3 * width * width
-    """
+def split_into_blocks(image, block_sz):
+    blocks = []
+    for i in range(0, image.shape[0], block_sz):
+        for j in range(0, image.shape[1], block_sz):
+            blocks.append(image[i:i + block_sz, j:j + block_sz])  # first row, then column
+    return np.array(blocks)
 
-    def __init__(self, path, resolution=64):
+def combine_blocks(blocks, height, width, block_sz):
+    image = np.zeros((height, width), np.float32)
+    index = 0
+    for i in range(0, height, block_sz):
+        for j in range(0, width, block_sz):
+            image[i:i + block_sz, j:j + block_sz] = blocks[index]
+            index += 1
+    return image
+
+def dct_transform(blocks):
+    dct_blocks = []
+    for block in blocks:
+        dct_block = np.float32(block) - 128  # Shift to center around 0
+        dct_block = cv2.dct(dct_block)
+        dct_blocks.append(dct_block)
+    return np.array(dct_blocks)
+
+def idct_transform(blocks):
+    idct_blocks = []
+    for block in blocks:
+        idct_block = cv2.idct(block)
+        idct_block = idct_block + 128  # Shift back
+        idct_blocks.append(idct_block)
+    return np.array(idct_blocks)
+
+
+class DCT_4YCbCr(Dataset):
+    def __init__(self, root_dir, img_sz=64, tokens=0, low_freqs=0, block_sz=8, low2high_order=None, reverse_order=None):
+        self.root_dir = root_dir
+        self.classes = os.listdir(root_dir)
+        self.class_to_idx = {cls: i for i, cls in enumerate(self.classes)}
+        self.img_paths = []
+        for cls in self.classes:
+            cls_dir = os.path.join(root_dir, cls)
+            for img_name in os.listdir(cls_dir):
+                self.img_paths.append((os.path.join(cls_dir, img_name), self.class_to_idx[cls]))
+
+        # parameters of DCT design
+        self.tokens = tokens
+        self.low_freqs = low_freqs
+        self.block_sz = block_sz
+
+        Y = int(img_sz * img_sz / (block_sz * block_sz))  # num of Y blocks
+        self.Y_blocks_per_row = int(img_sz / block_sz)
+        self.index = []  # index of Y if merging 2*2 Y-block area
+        for row in range(0, Y, int(2 * self.Y_blocks_per_row)):  # 0, 32, 64...
+            for col in range(0, self.Y_blocks_per_row, 2):  # 0, 2, 4...
+                self.index.append(row + col)
+        assert len(self.index) == int(Y / 4)
+
+        self.low2high_order = low2high_order
+        self.reverse_order = reverse_order
+
+        # token sequence: 4Y-Cb-Cr-4Y-Cb-Cr...
+        self.cb_index = [i for i in range(4, tokens, 6)]
+        self.cr_index = [i for i in range(5, tokens, 6)]
+        self.y_index = [i for i in range(0, tokens) if i not in self.cb_index and i not in self.cr_index]
+        assert len(self.y_index) + len(self.cb_index) + len(self.cr_index) == tokens
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
+        img_path, label = self.img_paths[idx]
+        img = Image.open(img_path).convert('RGB')
+        # img.save('original_img.jpg')
+        img = transforms.RandomHorizontalFlip()(img)  # do data augmentation by PIL
+        img = np.array(img)
+
+        # Step 1: Convert RGB to YCbCr
+        R = img[:, :, 0]
+        G = img[:, :, 1]
+        B = img[:, :, 2]
+
+        img_y = 0.299 * R + 0.587 * G + 0.114 * B
+        img_cb = -0.168736 * R - 0.331264 * G + 0.5 * B + 128
+        img_cr = 0.5 * R - 0.418688 * G - 0.081312 * B + 128
+
+        cb_downsampled = cv2.resize(img_cb, (img_cb.shape[1] // 2, img_cb.shape[0] // 2),
+                                    interpolation=cv2.INTER_LINEAR)
+        cr_downsampled = cv2.resize(img_cr, (img_cr.shape[1] // 2, img_cr.shape[0] // 2),
+                                    interpolation=cv2.INTER_LINEAR)
+
+        # Step 2: Split the Y, Cb, and Cr components into 4x4 blocks
+        y_blocks = split_into_blocks(img_y, self.block_sz)  # Y component, (64, 64) --> (256, 4, 4)
+        cb_blocks = split_into_blocks(cb_downsampled, self.block_sz)  # Cb component, (32, 32) --> (64, 4, 4)
+        cr_blocks = split_into_blocks(cr_downsampled, self.block_sz)  # Cr component, (32, 32) --> (64, 4, 4)
+
+        # Step 3: Apply DCT on each block
+        dct_y_blocks = dct_transform(y_blocks)  # (256, 4, 4)
+        dct_cb_blocks = dct_transform(cb_blocks)  # (64, 4, 4)
+        dct_cr_blocks = dct_transform(cr_blocks)  # (64, 4, 4)
+
+        # Step 4: organize the token order by Y-Y-Y-Y-Cb-Cr (2_blocks*2_blocks pixel region)
+        DCT_blocks = []
+        for i in range(dct_cr_blocks.shape[0]):
+            DCT_blocks.append([
+                dct_y_blocks[self.index[i]],  # Y
+                dct_y_blocks[self.index[i] + 1],  # Y
+                dct_y_blocks[self.index[i] + self.Y_blocks_per_row],  # Y
+                dct_y_blocks[self.index[i] + self.Y_blocks_per_row + 1],  # Y
+                dct_cb_blocks[i],  # Cb
+                dct_cr_blocks[i],  # Cr
+            ])
+        DCT_blocks = np.array(DCT_blocks).reshape(-1, 6, self.block_sz*self.block_sz)  # (64, 6, 4, 4) --> (64, 6, 16)
+
+        # Step 5: scale into [-1, 1]
+        assert DCT_blocks.shape == (self.tokens, 6, self.block_sz*self.block_sz)
+        DCT_blocks[:, :4 :] = (DCT_blocks[:, :4 :] - Y_mean) / Y_bound
+        DCT_blocks[:, 4, :] = (DCT_blocks[:, 4, :] - Cb_mean) / Cb_bound
+        DCT_blocks[:, 5, :] = (DCT_blocks[:, 5, :] - Cr_mean) / Cr_bound
+
+        # Step 6: reorder coe from low to high freq, then mask out high-freq signals
+        DCT_blocks = DCT_blocks[:, :, self.low2high_order]  # (64, 6, 16) --> (64, 6, 16)
+        DCT_blocks = DCT_blocks[:, :, :self.low_freqs]  # (64, 6, 16) --> (64, 6, low_freq_coe)
+
+        # numpy to torch
+        DCT_blocks = torch.from_numpy(DCT_blocks).reshape(self.tokens, -1)  # (64, 6*low_freq_coe)
+        DCT_blocks = DCT_blocks.float()  # float64 --> float32
+
+        return DCT_blocks
+
+        # """debug DCT to RGB"""
+        # tokens = self.tokens
+        # low_freqs = self.low_freqs
+        # block_sz = self.block_sz
+        # reverse_order = self.reverse_order
+        # resolution=64
+        # cb_blocks_per_row = int((resolution / block_sz) / 2)
+        # Y_blocks_per_row = int(resolution / block_sz)
+        #
+        # cb_index = [i for i in range(4, tokens, 6)]
+        # cr_index = [i for i in range(5, tokens, 6)]
+        # y_index = [i for i in range(0, tokens) if i not in cb_index and i not in cr_index]
+        # assert len(y_index) + len(cb_index) + len(cr_index) == tokens
+        # y_tokens = int((tokens / 6) * 4)
+        # cb_tokens = int(tokens / 6)
+        #
+        # sample = DCT_blocks.numpy()
+        # assert sample.shape == (tokens, low_freqs)
+        # # sample = np.clip(sample, -2, 2)  # clamp into [-1, 1]
+        #
+        # # fill up DCT coes
+        # DCT = np.zeros((tokens, block_sz * block_sz))
+        # DCT[:, :low_freqs] = sample
+        # DCT = DCT[:, reverse_order]  # convert the low to high freq order back to sequential order
+        #
+        # # DCT_Cb = ((DCT[cb_index, :] * CELEBA64_Cb_99_centered) + CELEBA64_Cb_mean)
+        # # DCT_Cr = ((DCT[cr_index, :] * CELEBA64_Cr_99_centered) + CELEBA64_Cr_mean)
+        # DCT_Cb = DCT[cb_index, :]
+        # DCT_Cr = DCT[cr_index, :]
+        # DCT_Cb = DCT_Cb.reshape(cb_tokens, block_sz, block_sz)  # (16, 64) --> (16, 8, 8)
+        # DCT_Cr = DCT_Cr.reshape(cb_tokens, block_sz, block_sz)  # (16, 64) --> (16, 8, 8)
+        #
+        # y_blocks = []
+        # # DCT_Y = (DCT[y_index, :] * CELEBA64_Y_99_centered) + CELEBA64_Y_mean  # (64, 64)
+        # DCT_Y = DCT[y_index, :]
+        # for row in range(cb_blocks_per_row):  # 16 cb/cr blocks, so 4*4 spatial blocks
+        #     tem_ls = []
+        #     for col in range(cb_blocks_per_row):
+        #         ind = row * (Y_blocks_per_row * 2) + col * 4
+        #         y_blocks.append(DCT_Y[ind, :])
+        #         y_blocks.append(DCT_Y[ind + 1, :])
+        #         tem_ls.append(DCT_Y[ind + 2, :])
+        #         tem_ls.append(DCT_Y[ind + 3, :])
+        #     for ele in tem_ls:
+        #         y_blocks.append(ele)
+        # DCT_Y = np.array(y_blocks).reshape(y_tokens, block_sz, block_sz)
+        #
+        # # Apply Inverse DCT on each block
+        # idct_y_blocks = idct_transform(DCT_Y)
+        # idct_cb_blocks = idct_transform(DCT_Cb)
+        # idct_cr_blocks = idct_transform(DCT_Cr)
+        #
+        # # Combine blocks back into images
+        # height, width = resolution, resolution
+        # y_reconstructed = combine_blocks(idct_y_blocks, height, width, block_sz)
+        # cb_reconstructed = combine_blocks(idct_cb_blocks, int(height / 2), int(width / 2), block_sz)
+        # cr_reconstructed = combine_blocks(idct_cr_blocks, int(height / 2), int(width / 2), block_sz)
+        #
+        # # Upsample Cb and Cr to original size
+        # cb_upsampled = cv2.resize(cb_reconstructed, (width, height), interpolation=cv2.INTER_LINEAR)
+        # cr_upsampled = cv2.resize(cr_reconstructed, (width, height), interpolation=cv2.INTER_LINEAR)
+        #
+        # # Step 5: Convert YCbCr back to RGB
+        # R = y_reconstructed + 1.402 * (cr_upsampled - 128)
+        # G = y_reconstructed - 0.344136 * (cb_upsampled - 128) - 0.714136 * (cr_upsampled - 128)
+        # B = y_reconstructed + 1.772 * (cb_upsampled - 128)
+        #
+        # rgb_reconstructed = np.zeros((height, width, 3))
+        # rgb_reconstructed[:, :, 0] = np.clip(R, 0, 255)
+        # rgb_reconstructed[:, :, 1] = np.clip(G, 0, 255)
+        # rgb_reconstructed[:, :, 2] = np.clip(B, 0, 255)
+        #
+        # # Convert to uint8
+        # rgb_reconstructed = np.uint8(rgb_reconstructed)  # (h, w, 3), RGB channels
+        # final_image = Image.fromarray(rgb_reconstructed)
+        # final_image.save('recon_pure_manual.jpg')
+        # time.sleep(3)
+        # raise ValueError
+
+
+class DCT_4YCbCr_cond(Dataset):
+    def __init__(self, img_sz=64, tokens=0, low_freqs=0, block_sz=8, low2high_order=None, reverse_order=None,
+                 train_files=None, labels=None, Y_bound=None):
+
+        self.image_paths = train_files
+        self.labels = labels
+
+        # parameters of DCT design
+        self.Y_bound = np.array(Y_bound)
+        print(f"using Y_bound {self.Y_bound} for training")
+        self.tokens = tokens
+        self.low_freqs = low_freqs
+        self.block_sz = block_sz
+
+        Y = int(img_sz * img_sz / (block_sz * block_sz))  # num of Y blocks
+        self.Y_blocks_per_row = int(img_sz / block_sz)
+        self.index = []  # index of Y if merging 2*2 Y-block area
+        for row in range(0, Y, int(2 * self.Y_blocks_per_row)):  # 0, 32, 64...
+            for col in range(0, self.Y_blocks_per_row, 2):  # 0, 2, 4...
+                self.index.append(row + col)
+        assert len(self.index) == int(Y / 4)
+
+        self.low2high_order = low2high_order
+        self.reverse_order = reverse_order
+
+        # token sequence: 4Y-Cb-Cr-4Y-Cb-Cr...
+        self.cb_index = [i for i in range(4, tokens, 6)]
+        self.cr_index = [i for i in range(5, tokens, 6)]
+        self.y_index = [i for i in range(0, tokens) if i not in self.cb_index and i not in self.cr_index]
+        assert len(self.y_index) + len(self.cb_index) + len(self.cr_index) == tokens
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        img_path = self.image_paths[idx]
+        img = Image.open(img_path).convert('RGB')
+        # img.save('original_img.jpg')
+        img = transforms.RandomHorizontalFlip()(img)  # do data augmentation by PIL
+        img = np.array(img)
+
+        # Step 1: Convert RGB to YCbCr
+        R = img[:, :, 0]
+        G = img[:, :, 1]
+        B = img[:, :, 2]
+
+        img_y = 0.299 * R + 0.587 * G + 0.114 * B
+        img_cb = -0.168736 * R - 0.331264 * G + 0.5 * B + 128
+        img_cr = 0.5 * R - 0.418688 * G - 0.081312 * B + 128
+
+        cb_downsampled = cv2.resize(img_cb, (img_cb.shape[1] // 2, img_cb.shape[0] // 2),
+                                    interpolation=cv2.INTER_LINEAR)
+        cr_downsampled = cv2.resize(img_cr, (img_cr.shape[1] // 2, img_cr.shape[0] // 2),
+                                    interpolation=cv2.INTER_LINEAR)
+
+        # Step 2: Split the Y, Cb, and Cr components into 4x4 blocks
+        y_blocks = split_into_blocks(img_y, self.block_sz)  # Y component, (64, 64) --> (256, 4, 4)
+        cb_blocks = split_into_blocks(cb_downsampled, self.block_sz)  # Cb component, (32, 32) --> (64, 4, 4)
+        cr_blocks = split_into_blocks(cr_downsampled, self.block_sz)  # Cr component, (32, 32) --> (64, 4, 4)
+
+        # Step 3: Apply DCT on each block
+        dct_y_blocks = dct_transform(y_blocks)  # (256, 4, 4)
+        dct_cb_blocks = dct_transform(cb_blocks)  # (64, 4, 4)
+        dct_cr_blocks = dct_transform(cr_blocks)  # (64, 4, 4)
+
+        # Step 4: organize the token order by Y-Y-Y-Y-Cb-Cr (2_blocks*2_blocks pixel region)
+        DCT_blocks = []
+        for i in range(dct_cr_blocks.shape[0]):
+            DCT_blocks.append([
+                dct_y_blocks[self.index[i]],  # Y
+                dct_y_blocks[self.index[i] + 1],  # Y
+                dct_y_blocks[self.index[i] + self.Y_blocks_per_row],  # Y
+                dct_y_blocks[self.index[i] + self.Y_blocks_per_row + 1],  # Y
+                dct_cb_blocks[i],  # Cb
+                dct_cr_blocks[i],  # Cr
+            ])
+        DCT_blocks = np.array(DCT_blocks).reshape(-1, 6, self.block_sz * self.block_sz)  # (64, 6, 4, 4) --> (64, 6, 16)
+
+        # Step 5: scale into [-1, 1]
+        assert DCT_blocks.shape == (self.tokens, 6, self.block_sz * self.block_sz)
+        DCT_blocks[:, :4:] = DCT_blocks[:, :4:] / self.Y_bound
+        DCT_blocks[:, 4, :] = DCT_blocks[:, 4, :] / self.Y_bound
+        DCT_blocks[:, 5, :] = DCT_blocks[:, 5, :] / self.Y_bound
+
+        # Step 6: reorder coe from low to high freq, then mask out high-freq signals
+        DCT_blocks = DCT_blocks[:, :, self.low2high_order]  # (64, 6, 16) --> (64, 6, 16)
+        DCT_blocks = DCT_blocks[:, :, :self.low_freqs]  # (64, 6, 16) --> (64, 6, low_freq_coe)
+
+        # numpy to torch
+        DCT_blocks = torch.from_numpy(DCT_blocks).reshape(self.tokens, -1)  # (64, 6*low_freq_coe)
+        DCT_blocks = DCT_blocks.float()  # float64 --> float32
+
+        label = np.array(self.labels[idx], dtype=np.int64)
+
+        return DCT_blocks, label
+
+
+class CelebA(DatasetFactory):
+    def __init__(self, path, resolution=0, tokens=0, low_freqs=0, block_sz=0, low2high_order=None,
+                 fid_stat=None, reverse_order=None):
         super().__init__()
 
         self.resolution = resolution
-
-        cx = 89
-        cy = 121
-        x1 = cy - 64
-        x2 = cy + 64
-        y1 = cx - 64
-        y2 = cx + 64
-
-        transform = transforms.Compose([Crop(x1, x2, y1, y2), transforms.Resize(self.resolution),
-                                        transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+        self.tokens = tokens
+        self.low_freqs = low_freqs
+        transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
                                         transforms.Normalize(0.5, 0.5)])
-        self.train = datasets.CelebA(root=path, split="train", target_type=[], transform=transform, download=True)
-        self.train = UnlabeledDataset(self.train)
+        """
+        manually download dataset: https://drive.usercontent.google.com/download?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM&authuser=0
+        then do center crop to 64x64 and set the image folder as the following 'path'
+        """
+        self.train = DCT_4YCbCr(
+            root_dir=path, img_sz=resolution, tokens=tokens,
+            low_freqs=low_freqs, block_sz=block_sz, low2high_order=low2high_order, reverse_order=reverse_order,
+        )
+        # self.train = UnlabeledDataset(self.train)
 
     @property
     def data_shape(self):
-        return 3, self.resolution, self.resolution
+        return self.tokens, self.low_freqs*6  # (96, 43)
 
     @property
     def fid_stat(self):
-        return 'assets/fid_stats/fid_stats_celeba64_train_50000_ddim.npz'
+        # specify the fid_stats file that will be used for FID computation during the training
+        return 'assets/fid_stats/fid_stats_celeba64_all.npz'
 
     @property
     def has_label(self):
         return False
 
 
+class FFHQ128(DatasetFactory):
+    def __init__(self, path, resolution=128, tokens=0, low_freqs=0, block_sz=0, low2high_order=None,
+                 fid_stat=None, reverse_order=None):
+        super().__init__()
+
+        self.resolution = resolution
+        self.tokens = tokens
+        self.low_freqs = low_freqs
+        # transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+        #                                 transforms.Normalize(0.5, 0.5)])
+
+        self.train = DCT_4YCbCr(
+            root_dir=path, img_sz=resolution, tokens=tokens,
+            low_freqs=low_freqs, block_sz=block_sz, low2high_order=low2high_order, reverse_order=reverse_order,
+        )
+        # self.train = UnlabeledDataset(self.train)
+
+    @property
+    def data_shape(self):
+        return self.tokens, self.low_freqs*6  # (96, 43)
+
+    @property
+    def fid_stat(self):
+        # specify the fid_stats file that will be used for FID computation during the training
+        return 'assets/fid_stats/fid_stats_ffhq128_jpg.npz'
+
+    @property
+    def has_label(self):
+        return False
+
+
+class FFHQ256(DatasetFactory):
+    def __init__(self, path, resolution=0, tokens=0, low_freqs=0, block_sz=0, low2high_order=None,
+                 fid_stat=None, reverse_order=None):
+        super().__init__()
+
+        self.resolution = resolution
+        self.tokens = tokens
+        self.low_freqs = low_freqs
+        # transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+        #                                 transforms.Normalize(0.5, 0.5)])
+
+        self.train = DCT_4YCbCr(
+            root_dir=path, img_sz=resolution, tokens=tokens,
+            low_freqs=low_freqs, block_sz=block_sz, low2high_order=low2high_order, reverse_order=reverse_order,
+        )
+        # self.train = UnlabeledDataset(self.train)
+
+    @property
+    def data_shape(self):
+        return self.tokens, self.low_freqs*6  # (96, 43)
+
+    @property
+    def fid_stat(self):
+        # specify the fid_stats file that will be used for FID computation during the training
+        return 'assets/fid_stats/fid_stats_ffhq256_jpg.npz'
+
+    @property
+    def has_label(self):
+        return False
+
+
+class ImageNet64(DatasetFactory):
+    def __init__(self, path, resolution=0, tokens=0, low_freqs=0, block_sz=0, low2high_order=None, reverse_order=None,
+                Y_bound=None, **kwargs):
+        super().__init__()
+
+        self.resolution = resolution
+        self.tokens = tokens
+        self.low_freqs = low_freqs
+
+        print(f'Counting ImageNet files from {path}')
+        train_files = _list_image_files_recursively(path)
+        class_names = [os.path.basename(path).split("_")[0] for path in train_files]
+        sorted_classes = {x: i for i, x in enumerate(sorted(set(class_names)))}
+        train_labels = [sorted_classes[x] for x in class_names]
+        print('Finish counting ImageNet files')
+
+        self.train = DCT_4YCbCr_cond(
+            img_sz=resolution, tokens=tokens, train_files=train_files, labels=train_labels,
+            low_freqs=low_freqs, block_sz=block_sz, low2high_order=low2high_order, reverse_order=reverse_order,
+            Y_bound=Y_bound,
+        )
+
+        if len(self.train) != 1_281_167:
+            print(f'Missing train samples: {len(self.train)} < 1281167')
+
+        self.K = max(self.train.labels) + 1
+        cnt = dict(zip(*np.unique(self.train.labels, return_counts=True)))
+        self.cnt = torch.tensor([cnt[k] for k in range(self.K)]).float()
+        self.frac = [self.cnt[k] / len(self.train.labels) for k in range(self.K)]
+        print(f'{self.K} classes')
+        print(f'cnt[:10]: {self.cnt[:10]}')
+        print(f'frac[:10]: {self.frac[:10]}')
+
+    @property
+    def data_shape(self):
+        return self.tokens, self.low_freqs*6  # (96, 43)
+
+    @property
+    def fid_stat(self):
+        # specify the fid_stats file that will be used for FID computation during the training
+        return f'assets/fid_stats/fid_stats_imgnet64_jpg.npz'
+
+    def sample_label(self, n_samples, device):
+        return torch.multinomial(self.cnt, n_samples, replacement=True).to(device)
+
+    def label_prob(self, k):
+        return self.frac[k]
+
+
 # MS COCO
-
-
 def center_crop(width, height, img):
     resample = {'box': Image.BOX, 'lanczos': Image.LANCZOS}['lanczos']
     crop = np.min(img.shape[:2])
@@ -539,6 +951,12 @@ def get_dataset(name, **kwargs):
         return ImageNet512Features(**kwargs)
     elif name == 'celeba':
         return CelebA(**kwargs)
+    elif name == 'ffhq128':
+        return FFHQ128(**kwargs)
+    elif name == 'ffhq256':
+        return FFHQ256(**kwargs)
+    elif name == 'imgnet64':
+        return ImageNet64(**kwargs)
     elif name == 'mscoco256_features':
         return MSCOCO256Features(**kwargs)
     else:

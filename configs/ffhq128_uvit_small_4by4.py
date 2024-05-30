@@ -14,11 +14,11 @@ def get_config():
 
     config.train = d(
         n_steps=500000,
-        batch_size=128,
+        batch_size=256,
         mode='uncond',
-        log_interval=10,
-        eval_interval=5000,
-        save_interval=50000,
+        log_interval=100,
+        eval_interval=25000,
+        save_interval=25000,
     )
 
     config.optimizer = d(
@@ -35,8 +35,8 @@ def get_config():
 
     config.nnet = d(
         name='uvit',
-        img_size=64,
-        patch_size=4,
+        tokens=256,  # number of tokens to the network
+        low_freqs=8,  # <=16
         embed_dim=512,
         depth=12,
         num_heads=8,
@@ -47,17 +47,23 @@ def get_config():
     )
 
     config.dataset = d(
-        name='celeba',
-        path='assets/datasets/celeba',
-        resolution=64,
+        name='ffhq128',
+        path='/data/clusterfs/mld/users/lanliu/mang/datasets/ffhq128',  # /home/mning2/datasets/ffhq128
+        fid_stat='assets/fid_stats/fid_stats_ffhq128_jpg.npz',
+        resolution=128,
+        tokens=256,  # number of tokens to the network
+        low_freqs=8,  # <=16
+        block_sz=4,  # size of DCT block
+        low2high_order=[0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15],
+        reverse_order= [0, 1, 5, 6, 2, 4, 7, 12,3, 8,  11, 13, 9, 10, 14, 15],
     )
 
     config.sample = d(
-        sample_steps=1000,
-        n_samples=50000,
+        sample_steps=50,
+        n_samples=10000,
         mini_batch_size=500,
-        algorithm='euler_maruyama_sde',
-        path=''
+        algorithm='dpm_solver',
+        path=None
     )
 
     return config

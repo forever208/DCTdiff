@@ -38,6 +38,7 @@ def evaluate(config):
     logging.info(f'load nnet from {config.nnet_path}')
     accelerator.unwrap_model(nnet).load_state_dict(torch.load(config.nnet_path, map_location='cpu'))
     nnet.eval()
+
     if 'cfg' in config.sample and config.sample.cfg and config.sample.scale > 0:  # classifier free guidance
         logging.info(f'Use classifier free guidance with scale={config.sample.scale}')
         def cfg_nnet(x, timesteps, y):
@@ -47,7 +48,6 @@ def evaluate(config):
         score_model = sde.ScoreModel(cfg_nnet, pred=config.pred, sde=sde.VPSDE())
     else:
         score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE())
-
 
     logging.info(config.sample)
     assert os.path.exists(dataset.fid_stat)
@@ -91,9 +91,20 @@ def evaluate(config):
         path = config.sample.path or temp_path
         if accelerator.is_main_process:
             os.makedirs(path, exist_ok=True)
-        utils.sample2dir(accelerator, path, config.sample.n_samples, config.sample.mini_batch_size, sample_fn, dataset.unpreprocess)
+
+        # generate RGB samples
+        # utils.sample2dir(accelerator, path, config.sample.n_samples, config.sample.mini_batch_size, sample_fn)
+
+        # generate DCT samples
+        utils.DCTsample2dir(
+            accelerator, path, config.sample.n_samples, config.sample.mini_batch_size, sample_fn,
+            tokens=config.dataset.tokens, low_freqs=config.dataset.low_freqs,
+            reverse_order=config.dataset.reverse_order, resolution=config.dataset.resolution,
+            block_sz=config.dataset.block_sz
+        )
+
         if accelerator.is_main_process:
-            fid = calculate_fid_given_paths((dataset.fid_stat, path))
+            fid = calculate_fid_given_paths((config.dataset.fid_stat, path))
             logging.info(f'nnet_path={config.nnet_path}, fid={fid}')
 
 
@@ -104,8 +115,7 @@ import os
 
 
 FLAGS = flags.FLAGS
-config_flags.DEFINE_config_file(
-    "config", None, "Training configuration.", lock_config=False)
+config_flags.DEFINE_config_file("config", None, "Training configuration.", lock_config=False)
 flags.mark_flags_as_required(["config"])
 flags.DEFINE_string("nnet_path", None, "The nnet to evaluate.")
 flags.DEFINE_string("output_path", None, "The path to output log.")
