@@ -9,15 +9,15 @@ def d(**kwargs):
 def get_config():
     config = ml_collections.ConfigDict()
 
-    config.seed = 1234
+    config.seed = 123456
     config.pred = 'noise_pred'
 
     config.train = d(
-        n_steps=300000,
+        n_steps=500000,
         batch_size=1024,
         mode='cond',
-        log_interval=10,
-        eval_interval=5000,
+        log_interval=100,
+        eval_interval=50000,
         save_interval=50000,
     )
 
@@ -35,8 +35,8 @@ def get_config():
 
     config.nnet = d(
         name='uvit',
-        img_size=64,
-        patch_size=4,
+        tokens=256,  # number of tokens to the network
+        low_freqs=4,  # B**2 - m
         embed_dim=768,
         depth=16,
         num_heads=12,
@@ -44,21 +44,30 @@ def get_config():
         qkv_bias=False,
         mlp_time_embed=False,
         num_classes=1000,
-        use_checkpoint=True
+        use_checkpoint=False
     )
 
     config.dataset = d(
-        name='imagenet',
-        path='assets/datasets/ImageNet',
+        name='imgnet64',
+        path='/data/scratch/datasets/imagenet64/train',
         resolution=64,
+        tokens=256,  # number of tokens to the network
+        low_freqs=4,  # B**2 - m
+        block_sz=2,  # size of DCT block
+        Y_bound=[247.125],  # eta
+        Y_std=[6.522, 3.377, 3.386, 2.389],
+        Cb_std=[4.27, 1.329, 1.351, 0.988],
+        Cr_std=[4.078, 1.292, 1.303, 0.987],
+        SNR_scale=4.0,
     )
 
     config.sample = d(
-        sample_steps=50,
+        sample_steps=100,
         n_samples=50000,
-        mini_batch_size=200,
-        algorithm='dpm_solver',
-        path=''
+        mini_batch_size=250,
+        algorithm='euler_maruyama_ode',
+        path='/data/scratch/samples',  # must be specified for distributed image saving
+        save_npz=''  # save generated sample if not None (used for precision/recall computation)
     )
 
     return config

@@ -10,17 +10,17 @@ import tempfile
 from dpm_solver_pytorch import NoiseScheduleVP, model_wrapper, DPM_Solver
 from absl import logging
 import builtins
+import shutil
+from DCT_utils import zigzag_order, reverse_zigzag_order
 
 
 def evaluate(config):
-    if config.get('benchmark', False):
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.deterministic = False
-
     mp.set_start_method('spawn')
     accelerator = accelerate.Accelerator()
     device = accelerator.device
     accelerate.utils.set_seed(config.seed, device_specific=True)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
     logging.info(f'Process {accelerator.process_index} using device: {device}')
 
     config.mixed_precision = accelerator.mixed_precision
@@ -32,26 +32,27 @@ def evaluate(config):
         builtins.print = lambda *args: None
 
     dataset = get_dataset(**config.dataset)
+    reverse_order = reverse_zigzag_order(config.dataset.block_sz)  # list
 
     nnet = utils.get_nnet(**config.nnet)
     nnet = accelerator.prepare(nnet)
     logging.info(f'load nnet from {config.nnet_path}')
     accelerator.unwrap_model(nnet).load_state_dict(torch.load(config.nnet_path, map_location='cpu'))
     nnet.eval()
+
     if 'cfg' in config.sample and config.sample.cfg and config.sample.scale > 0:  # classifier free guidance
         logging.info(f'Use classifier free guidance with scale={config.sample.scale}')
         def cfg_nnet(x, timesteps, y):
             _cond = nnet(x, timesteps, y=y)
             _uncond = nnet(x, timesteps, y=torch.tensor([dataset.K] * x.size(0), device=device))
             return _cond + config.sample.scale * (_cond - _uncond)
-        score_model = sde.ScoreModel(cfg_nnet, pred=config.pred, sde=sde.VPSDE())
+        score_model = sde.ScoreModel(cfg_nnet, pred=config.pred, sde=sde.VPSDE(SNR_scale=config.dataset.SNR_scale))
     else:
-        score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE())
-
+        score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE(SNR_scale=config.dataset.SNR_scale))
 
     logging.info(config.sample)
     assert os.path.exists(dataset.fid_stat)
-    logging.info(f'sample: n_samples={config.sample.n_samples}, mode={config.train.mode}, mixed_precision={config.mixed_precision}')
+    logging.info(f'sample: n_samples={config.sample.n_samples}, mode={config.train.mode}, seed={config.seed}')
 
     def sample_fn(_n_samples):
         x_init = torch.randn(_n_samples, *dataset.data_shape, device=device)
@@ -69,7 +70,7 @@ def evaluate(config):
             rsde = sde.ODE(score_model)
             return sde.euler_maruyama(rsde, x_init, config.sample.sample_steps, verbose=accelerator.is_main_process, **kwargs)
         elif config.sample.algorithm == 'dpm_solver':
-            noise_schedule = NoiseScheduleVP(schedule='linear')
+            noise_schedule = NoiseScheduleVP(schedule='linear', SNR_scale=config.dataset.SNR_scale)
             model_fn = model_wrapper(
                 score_model.noise_pred,
                 noise_schedule,
@@ -87,14 +88,27 @@ def evaluate(config):
         else:
             raise NotImplementedError
 
-    with tempfile.TemporaryDirectory() as temp_path:
-        path = config.sample.path or temp_path
-        if accelerator.is_main_process:
-            os.makedirs(path, exist_ok=True)
-        utils.sample2dir(accelerator, path, config.sample.n_samples, config.sample.mini_batch_size, sample_fn, dataset.unpreprocess)
-        if accelerator.is_main_process:
-            fid = calculate_fid_given_paths((dataset.fid_stat, path))
-            logging.info(f'nnet_path={config.nnet_path}, fid={fid}')
+    # create an empty folder to save generated images
+    path = config.sample.path
+    if accelerator.is_main_process:
+        os.makedirs(path, exist_ok=True)
+
+    # generate DCT samples
+    utils.DCTsample2dir_multiprocess(
+        accelerator, path, config.sample.n_samples, config.sample.mini_batch_size, sample_fn,
+        tokens=config.dataset.tokens, low_freqs=config.dataset.low_freqs,
+        reverse_order=reverse_order, resolution=config.dataset.resolution,
+        block_sz=config.dataset.block_sz, Y_bound=config.dataset.Y_bound
+    )
+
+    if accelerator.is_main_process:
+        fid = calculate_fid_given_paths((dataset.fid_stat, path))
+        logging.info(f'nnet_path={config.nnet_path}')
+        logging.info(f'fid={fid}')
+        logging.info(f' ')
+        if config.sample.save_npz:
+            utils.images_to_npz(path, config.sample.save_npz)  # save all images into a single npz file
+        shutil.rmtree(path)  # remove all generated images
 
 
 from absl import flags
@@ -104,8 +118,7 @@ import os
 
 
 FLAGS = flags.FLAGS
-config_flags.DEFINE_config_file(
-    "config", None, "Training configuration.", lock_config=False)
+config_flags.DEFINE_config_file("config", None, "Training configuration.", lock_config=False)
 flags.mark_flags_as_required(["config"])
 flags.DEFINE_string("nnet_path", None, "The nnet to evaluate.")
 flags.DEFINE_string("output_path", None, "The path to output log.")

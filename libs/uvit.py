@@ -138,14 +138,14 @@ class PatchEmbed(nn.Module):
 class UViT(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4.,
                  qkv_bias=False, qk_scale=None, norm_layer=nn.LayerNorm, mlp_time_embed=False, num_classes=-1,
-                 use_checkpoint=False, conv=True, skip=True):
+                 use_checkpoint=False, conv=True, skip=True, tokens=0, low_freqs=0):
         super().__init__()
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
         self.num_classes = num_classes
-        self.in_chans = in_chans
+        self.tokens = tokens
+        self.DCT_coes = low_freqs
 
-        self.patch_embed = PatchEmbed(patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
-        num_patches = (img_size // patch_size) ** 2
+        self.proj = nn.Linear(self.DCT_coes * 6, embed_dim, bias=True)
 
         self.time_embed = nn.Sequential(
             nn.Linear(embed_dim, 4 * embed_dim),
@@ -159,7 +159,7 @@ class UViT(nn.Module):
         else:
             self.extras = 1
 
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.extras + num_patches, embed_dim))
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.extras + self.tokens, embed_dim))
 
         self.in_blocks = nn.ModuleList([
             Block(
@@ -178,15 +178,14 @@ class UViT(nn.Module):
             for _ in range(depth // 2)])
 
         self.norm = norm_layer(embed_dim)
-        self.patch_dim = patch_size ** 2 * in_chans
-        self.decoder_pred = nn.Linear(embed_dim, self.patch_dim, bias=True)
-        self.final_layer = nn.Conv2d(self.in_chans, self.in_chans, 3, padding=1) if conv else nn.Identity()
+        self.decoder_pred = nn.Linear(embed_dim, self.DCT_coes * 6, bias=True)
 
         trunc_normal_(self.pos_embed, std=.02)
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
+            # nn.init.orthogonal_(m.weight)
             trunc_normal_(m.weight, std=.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
@@ -199,11 +198,11 @@ class UViT(nn.Module):
         return {'pos_embed'}
 
     def forward(self, x, timesteps, y=None):
-        x = self.patch_embed(x)
+        x = self.proj(x)  # (b, tokens, num_low_freq*6) --> (b, tokens, hidden_dim)
         B, L, D = x.shape
 
         time_token = self.time_embed(timestep_embedding(timesteps, self.embed_dim))
-        time_token = time_token.unsqueeze(dim=1)
+        time_token = time_token.unsqueeze(dim=1)  # (b, dim) --> (b, 1, dim)
         x = torch.cat((time_token, x), dim=1)
         if y is not None:
             label_emb = self.label_emb(y)
@@ -213,18 +212,17 @@ class UViT(nn.Module):
 
         skips = []
         for blk in self.in_blocks:
-            x = blk(x)
+            x = blk(x)  # (b, tokens, dim)
             skips.append(x)
 
-        x = self.mid_block(x)
+        x = self.mid_block(x)  # (b, tokens, dim)
 
         for blk in self.out_blocks:
-            x = blk(x, skips.pop())
+            x = blk(x, skips.pop())  # (b, tokens, dim)
 
         x = self.norm(x)
-        x = self.decoder_pred(x)
+        x = self.decoder_pred(x)  # (b, tokens, dim) --> (b, tokens, num_low_freq*6)
         assert x.size(1) == self.extras + L
-        x = x[:, self.extras:, :]
-        x = unpatchify(x, self.in_chans)
-        x = self.final_layer(x)
+        x = x[:, self.extras:, :]  # (b, tokens, num_low_freq)
+
         return x

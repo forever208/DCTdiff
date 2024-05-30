@@ -70,10 +70,12 @@ class SDE(object):
 
 
 class VPSDE(SDE):
-    def __init__(self, beta_min=0.1, beta_max=20):
+    def __init__(self, beta_min=0.1, beta_max=20, SNR_scale=1.0):
         # 0 <= t <= 1
         self.beta_0 = beta_min
         self.beta_1 = beta_max
+        self.SNR_scale = SNR_scale
+        print(f"using SNR_scale: {self.SNR_scale} for training")
 
     def drift(self, x, t):
         return -0.5 * stp(self.squared_diffusion(t), x)
@@ -82,10 +84,41 @@ class VPSDE(SDE):
         return self.squared_diffusion(t) ** 0.5
 
     def squared_diffusion(self, t):  # beta(t)
-        return self.beta_0 + t * (self.beta_1 - self.beta_0)
+        beta_t = self.beta_0 + t * (self.beta_1 - self.beta_0)
+
+        # SNR adjustment
+        a = self.beta_0
+        b = self.beta_1 - self.beta_0
+        exp_term = torch.exp(-1 * (a * t + 0.5 * b * (t**2)))
+        SNR_term_numerator = (self.SNR_scale - 1) * exp_term * (-1 * a - (b * t))
+        SNR_term_denominator = 1 + (self.SNR_scale - 1) * exp_term
+
+        return beta_t + (SNR_term_numerator / SNR_term_denominator)
 
     def squared_diffusion_integral(self, s, t):  # \int_s^t beta(tau) d tau
-        return self.beta_0 * (t - s) + (self.beta_1 - self.beta_0) * (t ** 2 - s ** 2) * 0.5
+        integral_beta = self.beta_0 * (t - s) + (self.beta_1 - self.beta_0) * (t ** 2 - s ** 2) * 0.5
+
+        # SNR adjustment
+        a = self.beta_0
+        b = self.beta_1 - self.beta_0
+        exp_term = torch.exp(-1 * (a * (t-s) + 0.5 * b * (t**2 - s**2)))
+        SNR_term = torch.log(1 + (self.SNR_scale - 1) * exp_term) - math.log(self.SNR_scale)
+
+        # # verify SNR term
+        # intgral_beta_t = self.beta_0 * t + (self.beta_1 - self.beta_0) * (t ** 2) * 0.5
+        # cum_alpha = (- intgral_beta_t).exp()  # alpha_bar
+        # cum_beta = 1 - cum_alpha
+        # org_SNR = cum_alpha / cum_beta
+        #
+        # exp_term = torch.exp(-1 * (a * t + 0.5 * b * (t ** 2)))
+        # SNR_term = torch.log(1 + (self.SNR_scaleup - 1) * exp_term) - math.log(self.SNR_scaleup)
+        # intgral_beta_t = intgral_beta_t + SNR_term
+        # cum_alpha = (- intgral_beta_t).exp()  # alpha_bar
+        # cum_beta = 1 - cum_alpha
+        # new_SNR = cum_alpha / cum_beta
+        # print(f"SNR scale up by {new_SNR / org_SNR}")
+
+        return integral_beta + SNR_term
 
     def skip_beta(self, s, t):  # beta_{t|s}, Cov[xt|xs]=beta_{t|s} I
         return 1. - self.skip_alpha(s, t)
@@ -253,7 +286,7 @@ def euler_maruyama(rsde, x_init, sample_steps, eps=1e-3, T=1, trace=None, verbos
     x = x_init
     if trace is not None:
         trace.append(x)
-    for s, t in tqdm(list(zip(timesteps, timesteps[1:]))[::-1], disable=not verbose, desc='euler_maruyama'):
+    for s, t in list(zip(timesteps, timesteps[1:]))[::-1]:
         drift = rsde.drift(x, t, **kwargs)
         diffusion = rsde.diffusion(t)
         dt = s - t
@@ -267,13 +300,19 @@ def euler_maruyama(rsde, x_init, sample_steps, eps=1e-3, T=1, trace=None, verbos
     return x
 
 
-def LSimple(score_model: ScoreModel, x0, pred='noise_pred', **kwargs):
+def LSimple(score_model: ScoreModel, x0, pred='noise_pred', reweight=None, **kwargs):
     t, noise, xt = score_model.sde.sample(x0)
     if pred == 'noise_pred':
         noise_pred = score_model.noise_pred(xt, t, **kwargs)
-        return mos(noise - noise_pred)
+        loss = (noise - noise_pred).pow(2)  # (batch, tokens, dim)
+        loss = loss * reweight  # loss re-weighting
+        return loss.flatten(start_dim=1).mean(dim=-1)
+
     elif pred == 'x0_pred':
         x0_pred = score_model.x0_pred(xt, t, **kwargs)
-        return mos(x0 - x0_pred)
+        loss = (x0 - x0_pred).pow(2)
+        loss = loss * reweight  # loss re-weighting
+        return loss.flatten(start_dim=1).mean(dim=-1)
+
     else:
         raise NotImplementedError(pred)
