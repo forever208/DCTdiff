@@ -16,8 +16,8 @@ from tools.fid_score import calculate_fid_given_paths
 from absl import logging
 import builtins
 import os
-import wandb
-wandb. init(mode="disabled")
+# import wandb
+# wandb. init(mode="disabled")
 from datetime import timedelta
 from accelerate import InitProcessGroupKwargs
 
@@ -148,7 +148,7 @@ def train(config):
                 logging.info(f'step={train_state.step} fid{n_samples}={_fid}')
                 with open(os.path.join(config.workdir, 'eval.log'), 'a') as f:
                     print(f'step={train_state.step} fid{n_samples}={_fid}', file=f)
-                wandb.log({f'fid{n_samples}': _fid}, step=train_state.step)
+                # wandb.log({f'fid{n_samples}': _fid}, step=train_state.step)
             _fid = torch.tensor(_fid, device=device)
             _fid = accelerator.reduce(_fid, reduction='sum')
 
@@ -165,7 +165,7 @@ def train(config):
         if accelerator.is_main_process and train_state.step % config.train.log_interval == 0:
             logging.info(utils.dct2str(dict(step=train_state.step, **metrics)))
             logging.info(config.workdir)
-            wandb.log(metrics, step=train_state.step)
+            # wandb.log(metrics, step=train_state.step)
 
         # generate images for visualization
         if accelerator.is_main_process and train_state.step % config.train.eval_interval == 0:
@@ -205,7 +205,7 @@ def train(config):
 
             samples = make_grid(dataset.unpreprocess(samples), 6)
             save_image(samples, os.path.join(config.sample_dir, f'{train_state.step}.png'))
-            wandb.log({'samples': wandb.Image(samples)}, step=train_state.step)
+            # wandb.log({'samples': wandb.Image(samples)}, step=train_state.step)
             torch.cuda.empty_cache()
         accelerator.wait_for_everyone()
 
