@@ -210,7 +210,7 @@ def train(config):
         accelerator.wait_for_everyone()
 
         # save ckpt and compute FID
-        if train_state.step % config.train.save_interval == 0 or train_state.step == config.train.n_steps:
+        if train_state.step >= 50000 and train_state.step % config.train.save_interval == 0 or train_state.step == config.train.n_steps:
             logging.info(f'Save and eval checkpoint {train_state.step}...')
             if accelerator.local_process_index == 0:
                 train_state.save(os.path.join(config.ckpt_root, f'{train_state.step}.ckpt'))

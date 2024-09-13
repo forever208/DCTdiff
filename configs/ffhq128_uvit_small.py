@@ -25,18 +25,18 @@ def get_config():
         name='adamw',
         lr=0.0002,
         weight_decay=0.03,
-        betas=(0.99, 0.999),
+        betas=(0.99, 0.99),
     )
 
     config.lr_scheduler = d(
         name='customized',
-        warmup_steps=2500
+        warmup_steps=5000
     )
 
     config.nnet = d(
         name='uvit',
-        img_size=32,
-        patch_size=2,
+        img_size=128,
+        patch_size=4,
         embed_dim=512,
         depth=12,
         num_heads=8,
@@ -47,13 +47,14 @@ def get_config():
     )
 
     config.dataset = d(
-        name='cifar10',
-        path='/data/clusterfs/mld/users/lanliu/mang/datasets/cifar10',  # /home/mang/Downloads/cifar10
+        name='ffhq128',
+        path='/home/mning2/datasets/ffhq128',  # /data/clusterfs/mld/users/lanliu/mang/datasets/ffhq128
+        resolution=128,
     )
 
     config.sample = d(
         sample_steps=50,
-        n_samples=50000,
+        n_samples=10000,
         mini_batch_size=500,
         algorithm='dpm_solver',
         path=''
