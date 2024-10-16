@@ -49,7 +49,7 @@ def evaluate(config):
 
     logging.info(config.sample)
     assert os.path.exists(dataset.fid_stat)
-    logging.info(f'sample: n_samples={config.sample.n_samples}, mode={config.train.mode}, mixed_precision={config.mixed_precision}')
+    logging.info(f'sample: n_samples={config.sample.n_samples}, mode={config.train.mode}, seed={config.seed}')
 
     def sample_fn(_n_samples):
         x_init = torch.randn(_n_samples, *dataset.data_shape, device=device)
@@ -92,7 +92,9 @@ def evaluate(config):
         utils.sample2dir(accelerator, path, config.sample.n_samples, config.sample.mini_batch_size, sample_fn, dataset.unpreprocess)
         if accelerator.is_main_process:
             fid = calculate_fid_given_paths((dataset.fid_stat, path))
-            logging.info(f'nnet_path={config.nnet_path}, fid={fid}')
+            logging.info(f'nnet_path={config.nnet_path}')
+            logging.info(f'fid={fid}')
+            logging.info(f' ')
 
 
 from absl import flags

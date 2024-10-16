@@ -13,12 +13,12 @@ def get_config():
     config.pred = 'noise_pred'
 
     config.train = d(
-        n_steps=300000,
+        n_steps=500000,
         batch_size=1024,
         mode='cond',
-        log_interval=10,
-        eval_interval=5000,
-        save_interval=50000,
+        log_interval=100,
+        eval_interval=25000,
+        save_interval=25000,
     )
 
     config.optimizer = d(
@@ -44,19 +44,19 @@ def get_config():
         qkv_bias=False,
         mlp_time_embed=False,
         num_classes=1000,
-        use_checkpoint=True
+        use_checkpoint=False
     )
 
     config.dataset = d(
         name='imagenet',
-        path='assets/datasets/ImageNet',
+        path='/data/clusterfs/mld/users/lanliu/mang/datasets/imagenet64',
         resolution=64,
     )
 
     config.sample = d(
         sample_steps=50,
         n_samples=50000,
-        mini_batch_size=200,
+        mini_batch_size=250,
         algorithm='dpm_solver',
         path=''
     )

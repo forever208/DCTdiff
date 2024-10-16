@@ -71,6 +71,8 @@ pip install accelerate==0.33.0  (auto install pytorch 2.4)
 pip install absl-py ml_collections einops wandb ftfy==6.1.1 transformers==4.23.1
 pip install opencv-python
 pip install scipy
+pip install tqdm
+pip install Pillow
 
 # xformers is optional, but it would greatly speed up the attention computation.
 pip install -U xformers
@@ -108,7 +110,7 @@ Put the downloaded directory as `assets/stable-diffusion` in this codebase.
 The autoencoders are used in latent diffusion models.
 
 #### Data
-* ImageNet 64x64: Put the standard ImageNet dataset (which contains the `train` and `val` directory) to `assets/datasets/ImageNet`.
+* ImageNet 64x64: Download datasets from [official website](https://www.image-net.org/download-images.php), unzip the folders and you will get 10 files like `train_data_batch_1`, convert them to JPG images using script `tools/ImageNet64_process.py`. Put `train` and `val` directory to `assets/datasets/ImageNet`.
 * ImageNet 256x256 and ImageNet 512x512: Extract ImageNet features according to `scripts/extract_imagenet_feature.py`.
 * MS-COCO: Download COCO 2014 [training](http://images.cocodataset.org/zips/train2014.zip), [validation](http://images.cocodataset.org/zips/val2014.zip) data and [annotations](http://images.cocodataset.org/annotations/annotations_trainval2014.zip). Then extract their features according to `scripts/extract_mscoco_feature.py` `scripts/extract_test_prompt_feature.py` `scripts/extract_empty_feature.py`.
 
@@ -116,6 +118,11 @@ The autoencoders are used in latent diffusion models.
 Download `fid_stats` directory from this [link](https://drive.google.com/drive/folders/1yo-XhqbPue3rp5P57j6QbA5QZx6KybvP?usp=sharing) (which contains reference statistics for FID).
 Put the downloaded directory as `assets/fid_stats` in this codebase.
 In addition to evaluation, these reference statistics are used to monitor FID during the training process.
+
+alternatively, you can generate the `fid_stats` on your own using the `pytorch-fid` repo:
+```shell
+python -m pytorch_fid --save-stats /home/mang/Downloads/cifar10/cifar_train/ /home/mang/Downloads/cifar10/fid_stats_cifar10_train.npz
+```
 
 ## Training
 

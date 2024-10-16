@@ -13,7 +13,7 @@ def get_config():
     config.pred = 'noise_pred'
 
     config.train = d(
-        n_steps=500000,
+        n_steps=1000000,
         batch_size=256,
         mode='uncond',
         log_interval=100,
@@ -36,7 +36,7 @@ def get_config():
     config.nnet = d(
         name='uvit',
         img_size=128,
-        patch_size=4,
+        patch_size=8,
         embed_dim=512,
         depth=12,
         num_heads=8,
@@ -48,7 +48,7 @@ def get_config():
 
     config.dataset = d(
         name='ffhq128',
-        path='/home/mning2/datasets/ffhq128',  # /data/clusterfs/mld/users/lanliu/mang/datasets/ffhq128
+        path='/data/scratch/datasets/ffhq128',  # /data/clusterfs/mld/users/lanliu/mang/datasets/ffhq128
         resolution=128,
     )
 

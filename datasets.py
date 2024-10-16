@@ -222,18 +222,22 @@ class ImageNet512Features(DatasetFactory):  # the moments calculated by Stable D
         return torch.randint(0, 1000, (n_samples,), device=device)
 
 
-class ImageNet(DatasetFactory):
+class ImageNet64(DatasetFactory):
     def __init__(self, path, resolution, random_crop=False, random_flip=True):
         super().__init__()
 
+        # prepare img_path and img_label
         print(f'Counting ImageNet files from {path}')
         train_files = _list_image_files_recursively(os.path.join(path, 'train'))
         class_names = [os.path.basename(path).split("_")[0] for path in train_files]
         sorted_classes = {x: i for i, x in enumerate(sorted(set(class_names)))}
         train_labels = [sorted_classes[x] for x in class_names]
-        print('Finish counting ImageNet files')
+        print(f'Finish counting ImageNet files, {len(train_files)} images and {len(train_labels)} labels')
 
+        # get Dataset
         self.train = ImageDataset(resolution, train_files, labels=train_labels, random_crop=random_crop, random_flip=random_flip)
+
+        # check data complexity
         self.resolution = resolution
         if len(self.train) != 1_281_167:
             print(f'Missing train samples: {len(self.train)} < 1281167')
@@ -252,7 +256,7 @@ class ImageNet(DatasetFactory):
 
     @property
     def fid_stat(self):
-        return f'assets/fid_stats/fid_stats_imagenet{self.resolution}_guided_diffusion.npz'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_imgnet64_jpg.npz'
 
     def sample_label(self, n_samples, device):
         return torch.multinomial(self.cnt, n_samples, replacement=True).to(device)
@@ -396,7 +400,7 @@ class CIFAR10(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return 'assets/fid_stats/fid_stats_cifar10_train.npz'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_cifar10_train.npz'
 
     @property
     def has_label(self):
@@ -425,7 +429,7 @@ class CelebA(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return 'assets/fid_stats/fid_stats_celeba64_all.npz'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_celeba64_all.npz'
 
     @property
     def has_label(self):
@@ -451,7 +455,7 @@ class FFHQ128(DatasetFactory):
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
         # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
-        return 'assets/fid_stats/fid_stats_ffhq128_jpg.npz'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq128_jpg.npz'
 
     @property
     def has_label(self):
@@ -477,7 +481,7 @@ class FFHQ256(DatasetFactory):
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
         # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
-        return 'assets/fid_stats/fid_stats_ffhq256_jpg.npz'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq256_jpg.npz'
 
     @property
     def has_label(self):
@@ -602,8 +606,8 @@ class MSCOCO256Features(DatasetFactory):  # the moments calculated by Stable Dif
 def get_dataset(name, **kwargs):
     if name == 'cifar10':
         return CIFAR10(**kwargs)
-    elif name == 'imagenet':
-        return ImageNet(**kwargs)
+    elif name == 'imagenet64':
+        return ImageNet64(**kwargs)
     elif name == 'imagenet256_features':
         return ImageNet256Features(**kwargs)
     elif name == 'imagenet512_features':

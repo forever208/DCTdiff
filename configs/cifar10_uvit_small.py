@@ -48,7 +48,7 @@ def get_config():
 
     config.dataset = d(
         name='cifar10',
-        path='/data/clusterfs/mld/users/lanliu/mang/datasets/cifar10',  # /home/mang/Downloads/cifar10
+        path='/data/scratch/datasets/cifar10',  # /home/mang/Downloads/cifar10
     )
 
     config.sample = d(
