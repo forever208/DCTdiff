@@ -8,42 +8,37 @@ from tqdm import tqdm
 import random
 
 
+
 #########################
 ##### block size = 2 ####
 #########################
 
 # before reorder
-Y_mean = np.array(
-    np.full((4,), 0.0)
-)
+Y_mean = np.full((4,), 0.0)
 
-Cb_mean = np.array(
-    np.full((4,), 0.0)
-)
+Cb_mean = np.full((4,), 0.0)
 
-Cr_mean = np.array(
-    np.full((4,), 0.0)
-)
+Cr_mean = np.full((4,), 0.0)
 
 
 # bound of 96.5% interval
-Y_bound = np.full((4,), 246.125)
+Y_bound = np.full((4,), 242.382)
 
-Cb_bound = np.full((4,), 246.125)
+Cb_bound = np.full((4,), 242.382)
 
-Cr_bound = np.full((4,), 246.125)
+Cr_bound = np.full((4,), 242.382)
 
 
 Y_std = np.array(
-    [6.523, 3.369, 3.376, 2.382]
+    [6.471, 3.588, 3.767, 2.411]
 )
 
 Cb_std = np.array(
-    [4.263, 1.321, 1.345, 0.988]
+    [4.308, 1.315, 1.487, 1.0]
 )
 
 Cr_std = np.array(
-    [4.069, 1.284, 1.295, 0.987]
+    [4.014, 1.284, 1.435, 1.0]
 )
 
 
@@ -97,7 +92,7 @@ def images_to_array(image_folder=None, save_path=None):
     print(f"array saved into {save_path}")
 
 
-def image_to_DCT_array(img_folder=None, block_sz=4):
+def image_to_DCT_array(img_folder=None, block_sz=8, coe=None):
 
     # read each image, do DCT transformation, compute the statistics
     Y_coe = []
@@ -106,6 +101,7 @@ def image_to_DCT_array(img_folder=None, block_sz=4):
     batch = 0
     file_list = os.listdir(img_folder)
     sampled_files = random.sample(file_list, 50000)
+
     for filename in tqdm(sampled_files):
         if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')):
             img_path = os.path.join(img_folder, filename)
@@ -128,66 +124,58 @@ def image_to_DCT_array(img_folder=None, block_sz=4):
 
             # Step 2: Split the Y, Cb, and Cr components into 8x8 blocks
             # Step 3: Apply DCT on each block
-            y_blocks = split_into_blocks(img_y, block_sz)  # Y component, (64, 64) --> (64, 8, 8)
-            dct_y_blocks = dct_transform(y_blocks)  # (64, 8, 8)
-            dct_y_blocks = dct_y_blocks.astype(np.float16)
-            Y_coe.append(dct_y_blocks.reshape(-1, block_sz*block_sz))
+            if coe.lower() == 'y':
+                y_blocks = split_into_blocks(img_y, block_sz)  # Y component, (64, 64) --> (64, 8, 8)
+                dct_y_blocks = dct_transform(y_blocks)  # (64, 8, 8)
+                dct_y_blocks = dct_y_blocks.astype(np.float16)
+                Y_coe.append(dct_y_blocks.reshape(-1, block_sz*block_sz))
+            elif coe.lower() == 'cb':
+                cb_blocks = split_into_blocks(cb_downsampled, block_sz)  # Cb component, (32, 32) --> (16, 8, 8)
+                dct_cb_blocks = dct_transform(cb_blocks)  # (16, 8, 8)
+                dct_cb_blocks = dct_cb_blocks.astype(np.float16)
+                Cb_coe.append(dct_cb_blocks.reshape(-1, block_sz*block_sz))
+            elif coe.lower() == 'cr':
+                cr_blocks = split_into_blocks(cr_downsampled, block_sz)  # Cr component, (32, 32) --> (16, 8, 8)
+                dct_cr_blocks = dct_transform(cr_blocks)  # (16, 8, 8)
+                dct_cr_blocks = dct_cr_blocks.astype(np.float16)
+                Cr_coe.append(dct_cr_blocks.reshape(-1, block_sz*block_sz))
 
-            cb_blocks = split_into_blocks(cb_downsampled, block_sz)  # Cb component, (32, 32) --> (16, 8, 8)
-            dct_cb_blocks = dct_transform(cb_blocks)  # (16, 8, 8)
-            dct_cb_blocks = dct_cb_blocks.astype(np.float16)
-            Cb_coe.append(dct_cb_blocks.reshape(-1, block_sz*block_sz))
+    if coe.lower() == 'y':
+        Y_coe = np.array(Y_coe).reshape(-1, block_sz*block_sz)
+        print(f"yield Y with shape {Y_coe.shape}")
+        np.save(f'/home/mang/Downloads/ffhq256_{block_sz}by{block_sz}_y', Y_coe)
+        print(f"y: {Y_coe.shape} saved")
+        time.sleep(3)
 
-            cr_blocks = split_into_blocks(cr_downsampled, block_sz)  # Cr component, (32, 32) --> (16, 8, 8)
-            dct_cr_blocks = dct_transform(cr_blocks)  # (16, 8, 8)
-            dct_cr_blocks = dct_cr_blocks.astype(np.float16)
-            Cr_coe.append(dct_cr_blocks.reshape(-1, block_sz*block_sz))
+    if coe.lower() == 'cb':
+        Cb_coe = np.array(Cb_coe).reshape(-1, block_sz * block_sz)
+        print(f"yield Cb with shape {Cb_coe.shape}")
+        np.save(f'/home/mang/Downloads/ffhq256_{block_sz}by{block_sz}_cb', Cb_coe)
+        print(f"cb: {Cb_coe.shape} saved")
+        time.sleep(3)
 
-
-    Y_coe = np.array(Y_coe).reshape(-1, block_sz*block_sz)
-    print(f"yield Y with shape {Y_coe.shape}")
-    np.save(f'/home/mang/Downloads/imgnet64_{block_sz}by{block_sz}_y', Y_coe)
-    print(f"y: {Y_coe.shape} saved")
-    time.sleep(3)
-
-    Cb_coe = np.array(Cb_coe).reshape(-1, block_sz * block_sz)
-    print(f"yield Cb with shape {Cb_coe.shape}")
-    np.save(f'/home/mang/Downloads/imgnet64_{block_sz}by{block_sz}_cb', Cb_coe)
-    print(f"cb: {Cb_coe.shape} saved")
-    time.sleep(3)
-
-    Cr_coe = np.array(Cr_coe).reshape(-1, block_sz * block_sz)
-    print(f"yield Cr with shape {Cr_coe.shape}")
-    np.save(f'/home/mang/Downloads/imgnet64_{block_sz}by{block_sz}_cr', Cr_coe)
-    print(f"cr: {Cr_coe.shape} saved")
-    time.sleep(3)
+    elif coe.lower() == 'cr':
+        Cr_coe = np.array(Cr_coe).reshape(-1, block_sz * block_sz)
+        print(f"yield Cr with shape {Cr_coe.shape}")
+        np.save(f'/home/mang/Downloads/ffhq256_{block_sz}by{block_sz}_cr', Cr_coe)
+        print(f"cr: {Cr_coe.shape} saved")
+        time.sleep(3)
 
 
 def DCT_statis_from_array(array_path=None, block_sz=None, thresh=1.5):
-
-    coe_array = np.load(array_path)
+    coe_array = np.load(array_path)  # input array is 8*8 coe block
     print(f"{coe_array.shape} loaded from {array_path}")
-    coe_array = coe_array.astype(np.float64)
 
-    """statistics for bound, std and entropy"""
-    means = np.around(np.mean(coe_array, axis=0), decimals=3)
-    stds = np.around(np.std(coe_array, axis=0), decimals=3)
-    mins = np.around(np.min(coe_array, axis=0), decimals=3)
-    maxs = np.around(np.max(coe_array, axis=0), decimals=3)
-    print(f"mean for {block_sz * block_sz} coe: {list(means)}")
-    print(f"std for {block_sz * block_sz} coe: {list(stds)}")
-    print(f"min for {block_sz * block_sz} coe: {list(mins)}")
-    print(f"max for {block_sz * block_sz} coe: {list(maxs)}")
-
+    """statistics bound, std and entropy"""
     DCT_coe_bounds = []
     DCT_coe_means = []
     DCT_coe_stds = []
     low_thresh = thresh
     up_thresh = 100 - low_thresh
     for index in range(block_sz * block_sz):
-        lower_bound = np.percentile(coe_array[:, index], low_thresh)
-        upper_bound = np.percentile(coe_array[:, index], up_thresh)
-        data = coe_array[:, index]
+        data = coe_array[:, index].astype(np.float64)  # avoid overflow
+        lower_bound = np.percentile(data, low_thresh)
+        upper_bound = np.percentile(data, up_thresh)
         data = data[(data >= lower_bound) & (data <= upper_bound)]
 
         mean = np.around(np.mean(data), decimals=3)
@@ -195,9 +183,11 @@ def DCT_statis_from_array(array_path=None, block_sz=None, thresh=1.5):
         print(f"({up_thresh - low_thresh}%) coe {index} has upper bound {upper_bound} and lower bound {lower_bound}")
 
         if np.abs(upper_bound) > np.abs(lower_bound):
+            upper_bound = np.around(np.abs(upper_bound), decimals=3)
             DCT_coe_bounds.append(upper_bound)
         else:
-            DCT_coe_bounds.append(lower_bound)
+            lower_bound = np.around(np.abs(lower_bound), decimals=3)
+            DCT_coe_bounds.append(np.abs(lower_bound))
 
         DCT_coe_means.append(mean)
         DCT_coe_stds.append(std)
@@ -210,7 +200,7 @@ def DCT_statis_from_array(array_path=None, block_sz=None, thresh=1.5):
     # approximate the entropy by histogram
     entropys = []
     for i in range(block_sz ** 2):
-        DCT_coe = coe_array[:, i]
+        DCT_coe = coe_array[:, i].astype(np.float64)  # avoid overflow
         lower_bound = np.percentile(DCT_coe, low_thresh)
         upper_bound = np.percentile(DCT_coe, up_thresh)
         filtered_coe = DCT_coe[(DCT_coe > lower_bound) & (DCT_coe < upper_bound)]
@@ -225,7 +215,7 @@ def DCT_statis_from_array(array_path=None, block_sz=None, thresh=1.5):
     print(f"entropy: {entropys}")
 
 
-def mask_high_freq_coe_from_img_folder(img_folder=None, save_folder=None, img_sz=128, block_sz=4, low_freqs=None,):
+def mask_high_freq_coe_from_img_folder(img_folder=None, save_folder=None, img_sz=256, block_sz=4, low_freqs=None,):
 
     # parameters of DCT transform
     Y = int(img_sz * img_sz / (block_sz * block_sz))  # num of Y blocks
@@ -242,10 +232,7 @@ def mask_high_freq_coe_from_img_folder(img_folder=None, save_folder=None, img_sz
     num_y_blocks = tokens * 4
     num_cb_blocks = tokens
 
-    if block_sz == 2:
-        low2high_order = [0, 1, 2, 3]
-        reverse_order = [0, 1, 2, 3]
-    elif block_sz == 4:
+    if block_sz == 4:
         low2high_order = [0, 1, 4, 8, 5, 2, 3, 6, 9, 12, 13, 10, 7, 11, 14, 15]
         reverse_order = [0, 1, 5, 6, 2, 4, 7, 12, 3, 8, 11, 13, 9, 10, 14, 15]
     elif block_sz == 8:
@@ -476,13 +463,14 @@ def plot_DCT_coe_distribution_from_array(array_path=None, normalization=False, s
 if __name__ == "__main__":
     # images_to_array(image_folder='/home/mang/Downloads/celeba/celeba64',
     #                 save_path='/home/mang/Downloads/celeba64_normalized.npy')
-    # image_to_DCT_array(img_folder='/home/mang/Downloads/train',
-    #                    block_sz=2)
-    DCT_statis_from_array(array_path='/home/mang/Downloads/imgnet64_2by2_cr.npy',
-                          block_sz=2, thresh=2.125)
-    # mask_high_freq_coe_from_img_folder(img_folder='/home/mang/Downloads/ffhq128_jpg/ffhq128',
-    #                                    save_folder='/home/mang/Downloads/recon_ffhq128_coe9',
-    #                                    img_sz=128, block_sz=4, low_freqs=9)
+    # image_to_DCT_array(img_folder='/home/mang/Downloads/ffhq256_jpg/ffhq256',
+    #                    block_sz=8, coe='cr')
+    # image_to_DCT_array(img_folder='/home/mang/Downloads/ffhq256_jpg/ffhq256',
+    #                    block_sz=4, coe='cr')
+    DCT_statis_from_array(array_path='/home/mang/Downloads/cifar10_2by2_cr.npy',
+                          block_sz=2, thresh=1.5)
+    # mask_high_freq_coe_from_img_folder(img_folder='/home/mang/Downloads/ffhq256_jpg/ffhq256',
+    #                                    save_folder='/home/mang/Downloads/recon_ffhq256_jpg_coe36',
+    #                                    img_sz=256, block_sz=8, low_freqs=36)
     # plot_DCT_coe_distribution_from_array(array_path='/home/mang/Downloads/ffhq256_4by4_y.npy',
     #                                      normalization=True, signal_type='y', reorder=True)
-

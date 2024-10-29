@@ -6,171 +6,35 @@ import matplotlib.pyplot as plt
 import time
 from tqdm import tqdm
 
-
-#########################
-##### block size = 8 ####
-#########################
-# CELEBA64_Y_mean = np.array(
-#     [-103.328, 0.636, 3.386, 0.127, 0.632, 0.016, 0.138, 0.006, -4.249, -0.054, 0.434, 0.028, -0.145, 0.003, -0.013, 0.001, 0.036, 0.049, -1.293, -0.032, -0.698, 0.007, -0.005, -0.003, 1.195, 0.039, -0.063, -0.005, 0.145, 0.001, 0.01, -0.001, -0.957, -0.003, -0.251, 0.021, 0.332, 0.0, 0.001, 0.001, -0.726, -0.011, -0.019, -0.012, -0.047, 0.001, -0.001, 0.0, -0.238, -0.003, 0.061, 0.003, -0.012, -0.0, -0.0, 0.0, -0.11, 0.003, -0.008, 0.006, 0.007, -0.0, 0.0, 0.0]
-# )
-#
-# CELEBA64_Cb_mean = np.array(
-#     [-106.469, 0.002, -1.302, 0.016, -0.028, 0.001, 0.006, 0.001, 1.572, 0.007, 0.704, -0.001, 0.002, 0.0, -0.001, -0.0, 0.87, -0.026, -0.074, 0.004, -0.002, 0.01, 0.004, 0.004, 0.779, -0.001, -0.095, 0.001, 0.001, 0.001, -0.0, 0.001, -0.045, 0.004, 0.004, 0.007, 0.006, 0.003, 0.002, 0.003, 0.042, -0.0, -0.047, 0.001, -0.001, 0.0, 0.001, 0.0, 0.027, 0.003, -0.009, 0.004, 0.001, 0.002, 0.0, 0.001, 0.001, 0.001, -0.01, -0.0, -0.0, -0.0, 0.001, 0.0]
-# )
-#
-# CELEBA64_Cr_mean = np.array(
-#     [137.019, -0.204, 2.476, -0.151, 0.003, -0.019, -0.004, -0.003, -1.974, 0.007, -0.571, 0.004, -0.003, -0.001, 0.0, -0.001, -0.733, 0.015, 0.019, -0.004, -0.002, 0.005, -0.001, 0.001, -1.371, 0.002, 0.062, -0.001, -0.001, 0.0, -0.0, -0.0, 0.082, 0.002, -0.005, 0.007, -0.001, 0.004, -0.002, 0.002, -0.096, -0.0, 0.033, -0.0, 0.002, 0.0, -0.001, 0.0, -0.006, 0.003, 0.005, 0.004, 0.0, 0.002, -0.002, 0.001, -0.029, -0.0, 0.011, -0.0, -0.0, 0.0, -0.0, -0.0]
-# )
-#
-#
-# # bound of 99% interval
-# CELEBA64_Y_99_centered = np.array(
-#     [1053.544, 503.066, 256.474, 144.344, 96.41, 60.408, 51.853, 31.429, 410.352, 204.285, 147.134, 99.762, 66.39, 57.843, 30.595, 28.398, 251.964, 126.276, 101.247, 72.38, 60.528, 30.831, 35.356, 28.3, 133.578, 89.345, 66.151, 59.305, 51.746, 44.143, 39.971, 30.985, 90.728, 65.729, 56.828, 31.382, 34.697, 3.899, 2.063, 2.196, 60.389, 52.898, 28.743, 32.373, 40.856, 1.81, 1.459, 1.405, 49.494, 32.4, 39.1, 42.387, 1.683, 1.36, 1.299, 1.255, 36.14, 5.652, 2.054, 1.687, 1.396, 1.286, 1.235, 1.195]
-# )
-#
-# CELEBA64_Cb_99_centered = np.array(
-#     [276.705, 112.847, 53.747, 23.107, 4.106, 2.639, 2.19, 1.836, 85.239, 42.732, 33.256, 26.639, 2.587, 1.989, 1.669, 1.407, 35.583, 24.347, 23.989, 2.729, 2.046, 1.634, 1.475, 1.296, 21.215, 23.632, 2.529, 2.038, 1.61, 1.398, 1.302, 1.211, 2.599, 1.929, 1.843, 1.565, 1.342, 1.172, 1.164, 1.078, 1.756, 1.514, 1.352, 1.246, 1.083, 1.017, 1.001, 0.95, 1.556, 1.257, 1.248, 1.138, 1.053, 0.982, 0.997, 0.955, 1.548, 1.063, 1.126, 1.027, 0.959, 0.915, 0.928, 1.086]
-# )
-#
-# CELEBA64_Cr_99_centered = np.array(
-#     [276.277, 123.739, 55.896, 25.801, 4.289, 2.49, 1.911, 1.547, 95.044, 51.402, 35.06, 27.007, 2.339, 1.777, 1.355, 1.032, 44.671, 25.865, 24.259, 2.645, 1.899, 1.414, 1.158, 0.944, 22.097, 26.114, 2.393, 2.027, 1.462, 1.196, 1.012, 0.893, 3.295, 2.232, 1.876, 1.528, 1.219, 0.966, 0.908, 0.818, 2.011, 1.746, 1.431, 1.238, 0.998, 0.863, 0.81, 0.754, 1.619, 1.38, 1.254, 1.046, 0.909, 0.815, 0.822, 0.755, 1.405, 1.056, 0.978, 0.892, 0.818, 0.745, 0.764, 0.885]
-# )
-#
-#
-# Y_std = np.array(
-#     [450.37, 149.152, 69.349, 38.811, 24.917, 17.109, 11.477, 7.624, 115.158, 62.444, 40.163, 27.189, 19.39, 14.023, 9.692, 6.769, 59.845, 37.219, 27.721, 20.96, 16.643, 12.182, 8.366, 6.09, 33.018, 24.043, 18.586, 15.442, 12.303, 8.497, 6.002, 4.661, 22.2, 16.933, 14.469, 11.74, 9.302, 5.133, 3.447, 3.057, 15.126, 12.271, 10.178, 8.141, 5.754, 3.333, 1.86, 1.694, 9.962, 8.278, 6.541, 4.593, 2.837, 1.518, 0.987, 0.891, 5.965, 4.552, 3.405, 2.798, 1.654, 1.291, 0.82, 0.666]
-# )
-#
-# Cb_std = np.array(
-#     [81.27, 32.73, 15.34, 8.145, 2.629, 1.106, 0.667, 0.521, 22.818, 13.912, 9.416, 4.333, 1.311, 0.686, 0.5, 0.402, 10.711, 7.892, 4.707, 1.519, 0.779, 0.514, 0.424, 0.369, 5.579, 2.763, 1.239, 0.746, 0.49, 0.398, 0.368, 0.34, 1.711, 0.896, 0.671, 0.494, 0.382, 0.339, 0.322, 0.311, 0.701, 0.525, 0.448, 0.37, 0.318, 0.3, 0.287, 0.276, 0.476, 0.395, 0.376, 0.34, 0.3, 0.286, 0.287, 0.276, 0.393, 0.332, 0.322, 0.301, 0.285, 0.268, 0.272, 0.286]
-# )
-#
-# Cr_std = np.array(
-#     [94.452, 39.289, 16.906, 9.503, 3.331, 1.325, 0.69, 0.475, 27.569, 15.69, 10.561, 5.316, 1.671, 0.78, 0.476, 0.352, 12.676, 9.222, 5.656, 1.895, 0.94, 0.523, 0.388, 0.317, 6.887, 4.107, 1.628, 0.925, 0.538, 0.378, 0.324, 0.287, 2.372, 1.355, 0.815, 0.546, 0.374, 0.304, 0.281, 0.266, 0.907, 0.685, 0.482, 0.386, 0.302, 0.273, 0.257, 0.244, 0.518, 0.441, 0.38, 0.329, 0.279, 0.257, 0.254, 0.242, 0.378, 0.333, 0.302, 0.277, 0.257, 0.239, 0.241, 0.247]
-# )
-
-
-
-#########################
-##### block size = 4 ####
-#########################
-
-# # before reorder
-# CELEBA64_Y_mean = np.array(
-#     [-51.986, 0.181, 0.316, 0.008, -0.298, 0.008, 0.037, -0.001, -0.479, 0.008, 0.166, -0.0, -0.333, -0.002, -0.017, 0.0]
-# )
-#
-# CELEBA64_Cb_mean = np.array(
-#     [-52.955, 0.007, -0.014, -0.0, 0.628, 0.0, 0.001, 0.0, -0.022, 0.003, 0.003, 0.001, -0.009, 0.0, -0.0, 0.0]
-# )
-#
-# CELEBA64_Cr_mean = np.array(
-#     [68.254, -0.099, 0.002, -0.001, -0.94, 0.001, -0.002, -0.0, 0.041, 0.003, -0.001, 0.002, 0.008, -0.0, 0.001, -0.0]
-# )
-#
-#
-# # bound of 99% interval
-# CELEBA64_Y_99_centered = np.array(
-#     [541.102, 208.157, 90.854, 43.774, 176.104, 82.552, 52.65, 31.538, 87.123, 48.111, 32.788, 17.292, 41.344, 25.836, 13.897, 3.857]
-# )
-#
-# CELEBA64_Cb_99_centered = np.array(
-#     [156.585, 42.231, 11.461, 2.799, 32.131, 15.096, 3.573, 1.499, 8.67, 2.834, 1.518, 1.164, 2.186, 1.259, 1.058, 1.001]
-# )
-#
-# CELEBA64_Cr_99_centered = np.array(
-#     [154.203, 47.668, 13.927, 2.895, 37.978, 16.792, 3.94, 1.275, 11.573, 3.409, 1.486, 0.903, 2.528, 1.259, 0.919, 0.818]
-# )
-#
-#
-# # std before normalization
-# Y_std = np.array(
-#     [226.619, 52.408, 21.509, 10.019, 44.651, 21.412, 13.092, 6.965, 19.061, 11.785, 7.574, 3.53, 8.61, 5.474, 2.977, 1.236]
-# )
-#
-# Cb_std = np.array(
-#     [44.396, 11.885, 3.072, 0.823, 8.55, 3.67, 0.966, 0.413, 2.195, 0.838, 0.411, 0.314, 0.619, 0.375, 0.297, 0.284]
-# )
-#
-# Cr_std = np.array(
-#     [51.96, 13.756, 3.623, 0.911, 10.214, 4.329, 1.15, 0.4, 2.792, 1.023, 0.439, 0.28, 0.726, 0.392, 0.278, 0.251]
-# )
-
-
-
 #########################
 ##### block size = 2 ####
 #########################
 
-# # before reorder
-# CELEBA64_Y_mean = np.array(
-#     [-20.702, 0.037, -0.211, 0.0]
-# )
-#
-# CELEBA64_Cb_mean = np.array(
-#     [-21.787, 0.001, 0.116, 0.0]
-# )
-#
-# CELEBA64_Cr_mean = np.array(
-#     [27.142, -0.019, -0.176, 0.0]
-# )
-#
-#
-# # bound of 99% interval
-# CELEBA64_Y_99_centered = np.array(
-#     [266.999, 72.75, 63.072, 23.263]
-# )
-#
-# CELEBA64_Cb_99_centered = np.array(
-#     [77.388, 10.552, 8.196, 1.812]
-# )
-#
-# CELEBA64_Cr_99_centered = np.array(
-#     [82.391, 11.963, 9.729, 1.946]
-# )
-#
-#
-# # std before normalization
-# Y_std = np.array(
-#     [77.953, 15.432, 13.612, 5.06]
-# )
-#
-# Cb_std = np.array(
-#     [21.924, 2.8, 2.086, 0.468]
-# )
-#
-# Cr_std = np.array(
-#     [26.072, 3.28, 2.514, 0.516]
-# )
-
-
-
 # before reorder
-CELEBA64_Y_mean = np.array(
-    [-20.702, 0.037, -0.211, 0.0]
+CELEBA64_Y_bound = np.array(
+    [246.354, 48.555, 43.641, 15.701]
 )
 
-CELEBA64_Cb_mean = np.array(
-    [-21.787, 0.001, 0.116, 0.0]
+CELEBA64_Cb_bound = np.array(
+    [76.736, 7.473, 5.911, 1.189]
 )
 
-CELEBA64_Cr_mean = np.array(
-    [27.142, -0.019, -0.176, 0.0]
+CELEBA64_Cr_bound = np.array(
+    [91.474, 8.668, 7.153, 1.302]
 )
 
-
-# bound of 99% interval without mean subtraction
-CELEBA64_Y_99_centered = np.array(
-    [250.298, 250.298, 250.298, 250.298]
-)
-
-CELEBA64_Cb_99_centered = np.array(
-    [250.298, 250.298, 250.298, 250.298]
-)
-
-CELEBA64_Cr_99_centered = np.array(
-    [250.298, 250.298, 250.298, 250.298]
-)
+# bound of 96.5% interval without mean subtraction
+# CELEBA64_Y_bound = np.array(
+#     [244.925, 244.925, 244.925, 244.925]
+# )
+#
+# CELEBA64_Cb_bound = np.array(
+#     [244.925, 244.925, 244.925, 244.925]
+# )
+#
+# CELEBA64_Cr_bound = np.array(
+#     [244.925, 244.925, 244.925, 244.925]
+# )
 
 
 # std before normalization
@@ -460,7 +324,7 @@ def DCT_statis_from_array(array_path=None, block_sz=2):
     coe_array = np.load(array_path)  # input array is 8*8 coe block
     print(f"{coe_array.shape} loaded")
 
-    """statistics for 99percentile, mean and std"""
+    """statistics for percentile, mean and std"""
     means = np.around(np.mean(coe_array, axis=0), decimals=3)
     stds = np.around(np.std(coe_array, axis=0), decimals=3)
     min = np.around(np.min(coe_array, axis=0), decimals=3)
@@ -472,29 +336,25 @@ def DCT_statis_from_array(array_path=None, block_sz=2):
 
     DCT_coe_bounds = []
     for index in range(block_sz * block_sz):
-        # lower_bound = np.percentile(coe_array[:, index] - means[index], 0.5)
-        # upper_bound = np.percentile(coe_array[:, index] - means[index], 99.5)
-        lower_bound = np.percentile(coe_array[:, index] - means[index], 1.25)
-        upper_bound = np.percentile(coe_array[:, index] - means[index], 98.75)
+        low_thresh = 1.5
+        up_thresh = 100 - low_thresh
+        lower_bound = np.percentile(coe_array[:, index], low_thresh)
+        upper_bound = np.percentile(coe_array[:, index], up_thresh)
         lower_bound = np.round(lower_bound, 3)
         upper_bound = np.round(upper_bound, 3)
-        print(f"(99%) coe {index} has upper bound {upper_bound} and lower bound {lower_bound} after subtracting mean {means[index]}")
+        print(f"({up_thresh-low_thresh}%) coe {index} has upper bound {upper_bound} and lower bound {lower_bound} after subtracting mean {means[index]}")
 
         if np.abs(lower_bound) > np.abs(upper_bound):
             DCT_coe_bounds.append(np.abs(lower_bound))
         else:
             DCT_coe_bounds.append(np.abs(upper_bound))
-    print(f"99percentile bound is {DCT_coe_bounds}:")
+    print(f"{up_thresh-low_thresh} percentile bound is {DCT_coe_bounds}:")
     print(f"{'-'*100}")
 
 
 def plot_coe_distribution_from_array(array_path=None, normalization=False, coe_type=None, block_sz=2, reorder=False):
     coe_array = np.load(array_path)  # input array is 8*8 coe block
     print(f"{coe_array.shape} loaded")
-
-    # take log with log base 100
-    # coe_array[coe_array > 0] = np.log10(coe_array[coe_array > 0] + 1) / np.log10(100)
-    # coe_array[coe_array < 0] = -(np.log10(-coe_array[coe_array < 0] + 1) / np.log10(100))
 
     if normalization:
         print(f"use normalization")
@@ -505,45 +365,29 @@ def plot_coe_distribution_from_array(array_path=None, normalization=False, coe_t
             coe_array = (coe_array - 0.5) / 0.5
 
         elif coe_type.lower() == 'y':
-            coe_array = (coe_array - CELEBA64_Y_mean) / CELEBA64_Y_99_centered
+            coe_array = coe_array / CELEBA64_Y_bound
         elif coe_type.lower() == 'cb':
-            coe_array = (coe_array - CELEBA64_Cb_mean) / CELEBA64_Cb_99_centered
+            coe_array = coe_array / CELEBA64_Cb_bound
         elif coe_type.lower() == 'cr':
-            coe_array = (coe_array - CELEBA64_Cr_mean) / CELEBA64_Cr_99_centered
+            coe_array = coe_array / CELEBA64_Cr_bound
         else:
             raise ValueError(f"{coe_type} not implemented")
 
 
     stds = []
     entropys = []
+    fig, axs = plt.subplots(1, 4, figsize=(20, 3))  # Create 1 row and 4 columns
     for i in range(block_sz**2):
         DCT_coe = coe_array[:, i]
         std = np.around(np.std(DCT_coe), decimals=3)
         stds.append(std)
 
-        # 99%
-        lower_bound = np.percentile(DCT_coe, 0.5)
-        upper_bound = np.percentile(DCT_coe, 99.5)
+        # percentile
+        low_thresh = 1.5
+        up_thresh = 100 - low_thresh
+        lower_bound = np.percentile(DCT_coe, low_thresh)
+        upper_bound = np.percentile(DCT_coe, up_thresh)
         filtered_coe = DCT_coe[(DCT_coe > lower_bound) & (DCT_coe < upper_bound)]
-
-        # compute the entroy
-        # from scipy.stats import gaussian_kde
-        # from scipy.integrate import quad
-        #
-        # # KDE to estimate the PDF
-        # kde = gaussian_kde(filtered_coe)
-        #
-        # def integrand(x):
-        #     pdf_value = kde.evaluate(x)[0]
-        #     if pdf_value > 0:  # To avoid log(0)
-        #         return -pdf_value * np.log(pdf_value)
-        #     else:
-        #         return 0
-        #
-        # # Compute the integral
-        # entropy, error = quad(integrand, -1, 1)
-        # entropys.append(entropy)
-        # print(f"{i} coe has entropy {entropy}")
 
         # approximate the entropy by histogram
         counts, bin_edges = np.histogram(filtered_coe, bins=100, )
@@ -553,17 +397,24 @@ def plot_coe_distribution_from_array(array_path=None, normalization=False, coe_t
         print(f"{i} coe has entropy {entropy}")
 
         # Plotting the distribution
-        plt.figure(figsize=(10, 6))
-        plt.hist(filtered_coe, bins=50, alpha=0.75, color='green', edgecolor='black')
-        plt.xlabel('DCT coe')
-        plt.ylabel('Frequency')
-        plt.title(f'DCT coe Distribution at {i}')
-        plt.grid(True)
-        fig = plt.gcf()
-        fig.tight_layout()
-        plt.savefig(f"/home/mang/{i}.png")
-        plt.close()
-        # plt.show()
+        axs[i].hist(filtered_coe, bins=50, color='ForestGreen', range=(-1, 1))
+        # axs[i].set_xlabel('DCT coe')
+        axs[i].set_ylabel('count')
+
+        if i == 0:
+            axs[i].set_title(f'Histogram of $D(0, 0)$')
+        elif i == 1:
+            axs[i].set_title(f'Histogram of $D(0, 1)$')
+        elif i == 2:
+            axs[i].set_title(f'Histogram of $D(1, 0)$')
+        elif i == 3:
+            axs[i].set_title(f'Histogram of $D(1, 1)$')
+        axs[i].grid(True)
+
+    fig.tight_layout()
+    plt.savefig(f"/home/mang/coe_distribution.png")
+    plt.show()
+    plt.close()
 
     # stds_arr = np.array(stds).reshape(8, 8)
     # np.set_printoptions(suppress=True)
@@ -583,9 +434,7 @@ if __name__ == "__main__":
     # images_to_array(image_folder='/home/mang/Downloads/celeba/celeba64',
     #                 save_path='/home/mang/Downloads/celeba64_normalized.npy')
     # image_to_DCT_array(img_folder='/home/mang/Downloads/celeba/celeba64',
-    #                        block_sz=8)
-    # image_to_DCT_array(img_folder='/home/mang/Downloads/celeba/celeba64',
     #                        block_sz=2)
-    DCT_statis_from_array(array_path='/home/mang/Downloads/celeba64_2by2_y.npy', block_sz=2)
-    # plot_coe_distribution_from_array(array_path='/home/mang/Downloads/celeba64_2by2_cb.npy',
-    #                                  normalization=True, block_sz=2, coe_type='cb')
+    # DCT_statis_from_array(array_path='/home/mang/Downloads/celeba64_2by2_cr.npy', block_sz=2)
+    plot_coe_distribution_from_array(array_path='/home/mang/Downloads/celeba64_2by2_y.npy',
+                                     normalization=True, block_sz=2, coe_type='y')

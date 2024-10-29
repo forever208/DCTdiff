@@ -13,14 +13,12 @@ import builtins
 
 
 def evaluate(config):
-    if config.get('benchmark', False):
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cudnn.deterministic = False
-
     mp.set_start_method('spawn')
     accelerator = accelerate.Accelerator()
     device = accelerator.device
     accelerate.utils.set_seed(config.seed, device_specific=True)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
     logging.info(f'Process {accelerator.process_index} using device: {device}')
 
     config.mixed_precision = accelerator.mixed_precision
@@ -51,7 +49,7 @@ def evaluate(config):
 
     logging.info(config.sample)
     assert os.path.exists(dataset.fid_stat)
-    logging.info(f'sample: n_samples={config.sample.n_samples}, mode={config.train.mode}, mixed_precision={config.mixed_precision}')
+    logging.info(f'sample: n_samples={config.sample.n_samples}, mode={config.train.mode}, seed={config.seed}')
 
     def sample_fn(_n_samples):
         x_init = torch.randn(_n_samples, *dataset.data_shape, device=device)
@@ -100,12 +98,14 @@ def evaluate(config):
             accelerator, path, config.sample.n_samples, config.sample.mini_batch_size, sample_fn,
             tokens=config.dataset.tokens, low_freqs=config.dataset.low_freqs,
             reverse_order=config.dataset.reverse_order, resolution=config.dataset.resolution,
-            block_sz=config.dataset.block_sz
+            block_sz=config.dataset.block_sz, Y_bound=config.dataset.Y_bound
         )
 
         if accelerator.is_main_process:
-            fid = calculate_fid_given_paths((config.dataset.fid_stat, path))
-            logging.info(f'nnet_path={config.nnet_path}, fid={fid}')
+            fid = calculate_fid_given_paths((dataset.fid_stat, path))
+            logging.info(f'nnet_path={config.nnet_path}')
+            logging.info(f'fid={fid}')
+            logging.info(f' ')
 
 
 from absl import flags

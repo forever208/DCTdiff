@@ -21,14 +21,15 @@ import numpy as np
 
 
 def train(config):
+    if config.get('benchmark', False):
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+
     mp.set_start_method('spawn')
     process_group_kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=3600))  # 1 hour
     accelerator = accelerate.Accelerator(kwargs_handlers=[process_group_kwargs])
     device = accelerator.device
     accelerate.utils.set_seed(config.seed, device_specific=True)
-    # torch.cuda.manual_seed(config.seed)
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark = False
     logging.info(f'Process {accelerator.process_index} using device: {device}')
 
     config.mixed_precision = accelerator.mixed_precision
@@ -89,9 +90,6 @@ def train(config):
 
     reweight_by_std = torch.cat((Y_reweight, Y_reweight, Y_reweight, Y_reweight, Cb_reweight, Cr_reweight)).to(device=device)
     assert reweight_by_std.shape[0] == config.dataset.low_freqs * 6
-    # cb_index = [i for i in range(4, config.dataset.tokens, 6)]
-    # cr_index = [i for i in range(5, config.dataset.tokens, 6)]
-    # y_index = [i for i in range(0, config.dataset.tokens) if i not in cb_index and i not in cr_index]
 
     def get_data_generator():
         while True:
@@ -101,8 +99,8 @@ def train(config):
     data_generator = get_data_generator()
 
     # wrap network with diffusion framework
-    score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE())
-    score_model_ema = sde.ScoreModel(nnet_ema, pred=config.pred, sde=sde.VPSDE())
+    score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE(SNR_scale=config.dataset.SNR_scale))
+    score_model_ema = sde.ScoreModel(nnet_ema, pred=config.pred, sde=sde.VPSDE(SNR_scale=config.dataset.SNR_scale))
 
     def train_step(_batch):
         _metrics = dict()
@@ -146,7 +144,7 @@ def train(config):
             elif algorithm == 'euler_maruyama_ode':
                 return sde.euler_maruyama(sde.ODE(score_model_ema), _x_init, sample_steps, **kwargs)
             elif algorithm == 'dpm_solver':
-                noise_schedule = NoiseScheduleVP(schedule='linear')
+                noise_schedule = NoiseScheduleVP(schedule='linear', SNR_scale=config.dataset.SNR_scale)
                 model_fn = model_wrapper(
                     score_model_ema.noise_pred,
                     noise_schedule,
@@ -221,7 +219,7 @@ def train(config):
             elif config.sample.algorithm == 'euler_maruyama_ode':
                 samples = sde.euler_maruyama(sde.ODE(score_model_ema), x_init, config.sample.sample_steps, **kwargs)
             elif config.sample.algorithm == 'dpm_solver':
-                noise_schedule = NoiseScheduleVP(schedule='linear')
+                noise_schedule = NoiseScheduleVP(schedule='linear', SNR_scale=config.dataset.SNR_scale)
                 model_fn = model_wrapper(
                     score_model_ema.noise_pred,
                     noise_schedule,

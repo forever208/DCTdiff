@@ -4,7 +4,7 @@ import math
 
 
 class NoiseScheduleVP:
-    def __init__(self, schedule='linear'):
+    def __init__(self, schedule='linear', SNR_scale=1.0):
         """Create a wrapper class for the forward SDE (VP type).
 
         The forward SDE ensures that the condition distribution q_{t|0}(x_t | x_0) = N ( alpha_t * x_0, sigma_t^2 * I ).
@@ -59,12 +59,22 @@ class NoiseScheduleVP:
         else:
             self.T = 1.
 
+        self.SNR_scale = SNR_scale
+        print(f"using SNR scale: {self.SNR_scale} for DPM-Solver sampling")
+
     def marginal_log_mean_coeff(self, t):
         """
         Compute log(alpha_t) of a given continuous-time label t in [0, T].
         """
         if self.schedule == 'linear':
-            return -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
+            a = self.beta_0
+            b = self.beta_1 - self.beta_0
+            integral_beta = a * t + b * (t ** 2) * 0.5
+            exp_term = torch.exp(-1 * (a * t + 0.5 * b * (t ** 2)))
+            SNR_term = torch.log(1 + (self.SNR_scale - 1) * exp_term) - math.log(self.SNR_scale)
+            return -0.5 * (integral_beta + SNR_term)
+
+            # return -0.25 * t ** 2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
         elif self.schedule == 'cosine':
             log_alpha_fn = lambda s: torch.log(torch.cos((s + self.cosine_s) / (1. + self.cosine_s) * math.pi / 2.))
             log_alpha_t = log_alpha_fn(t) - self.cosine_log_alpha_0
@@ -91,9 +101,15 @@ class NoiseScheduleVP:
         Compute the continuous-time label t in [0, T] of a given half-logSNR lambda_t.
         """
         if self.schedule == 'linear':
-            tmp = 2. * (self.beta_1 - self.beta_0) * torch.logaddexp(-2. * lamb, torch.zeros((1,)).to(lamb))
-            Delta = self.beta_0 ** 2 + tmp
-            return tmp / (torch.sqrt(Delta) + self.beta_0) / (self.beta_1 - self.beta_0)
+            a = self.beta_0
+            b = self.beta_1 - self.beta_0
+            exp = torch.exp(2 * lamb)
+            log_term = torch.log((self.SNR_scale * (1 + exp) / exp) + 1 - self.SNR_scale)
+            return (torch.sqrt(a**2 + 2 * b * log_term) - a ) / b
+
+            # tmp = 2. * (self.beta_1 - self.beta_0) * torch.logaddexp(-2. * lamb, torch.zeros((1,)).to(lamb))
+            # Delta = self.beta_0 ** 2 + tmp
+            # return tmp / (torch.sqrt(Delta) + self.beta_0) / (self.beta_1 - self.beta_0)
         else:
             log_alpha = -0.5 * torch.logaddexp(-2. * lamb, torch.zeros((1,)).to(lamb))
             t_fn = lambda log_alpha_t: torch.arccos(torch.exp(log_alpha_t + self.cosine_log_alpha_0)) * 2. * (

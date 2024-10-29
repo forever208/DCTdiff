@@ -106,52 +106,35 @@ class DatasetFactory(object):
 # CIFAR10
 
 class CIFAR10(DatasetFactory):
-    r""" CIFAR10 dataset
-
-    Information of the raw dataset:
-         train: 50,000
-         test:  10,000
-         shape: 3 * 32 * 32
-    """
-
-    def __init__(self, path, random_flip=False, cfg=False, p_uncond=None):
+    def __init__(self, path, resolution=0, tokens=0, low_freqs=0, block_sz=0, low2high_order=None, reverse_order=None,
+                 Y_bound=None, **kwargs):
         super().__init__()
 
-        transform_train = [transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]
-        transform_test = [transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]
-        if random_flip:  # only for train
-            transform_train.append(transforms.RandomHorizontalFlip())
-        transform_train = transforms.Compose(transform_train)
-        transform_test = transforms.Compose(transform_test)
-        self.train = datasets.CIFAR10(path, train=True, transform=transform_train, download=True)
-        self.test = datasets.CIFAR10(path, train=False, transform=transform_test, download=True)
-
-        assert len(self.train.targets) == 50000
-        self.K = max(self.train.targets) + 1
-        self.cnt = torch.tensor([len(np.where(np.array(self.train.targets) == k)[0]) for k in range(self.K)]).float()
-        self.frac = [self.cnt[k] / 50000 for k in range(self.K)]
-        print(f'{self.K} classes')
-        print(f'cnt: {self.cnt}')
-        print(f'frac: {self.frac}')
-
-        if cfg:  # classifier free guidance
-            assert p_uncond is not None
-            print(f'prepare the dataset for classifier free guidance with p_uncond={p_uncond}')
-            self.train = CFGDataset(self.train, p_uncond, self.K)
+        self.resolution = resolution
+        self.tokens = tokens
+        self.low_freqs = low_freqs
+        transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+                                        transforms.Normalize(0.5, 0.5)])
+        self.train = DCT_4YCbCr(
+            root_dir=path, img_sz=resolution, tokens=tokens,
+            low_freqs=low_freqs, block_sz=block_sz, low2high_order=low2high_order, reverse_order=reverse_order,
+            Y_bound=Y_bound
+        )
+        # self.train = UnlabeledDataset(self.train)
 
     @property
     def data_shape(self):
-        return 3, 32, 32
+        return self.tokens, self.low_freqs*6  # (96, 43)
 
     @property
     def fid_stat(self):
-        return 'assets/fid_stats/fid_stats_cifar10_train_pytorch.npz'
+        # specify the fid_stats file that will be used for FID computation during the training
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_cifar10_train.npz'
 
-    def sample_label(self, n_samples, device):
-        return torch.multinomial(self.cnt, n_samples, replacement=True).to(device)
+    @property
+    def has_label(self):
+        return False
 
-    def label_prob(self, k):
-        return self.frac[k]
 
 
 # ImageNet
@@ -410,7 +393,8 @@ def idct_transform(blocks):
 
 
 class DCT_4YCbCr(Dataset):
-    def __init__(self, root_dir, img_sz=64, tokens=0, low_freqs=0, block_sz=8, low2high_order=None, reverse_order=None):
+    def __init__(self, root_dir, img_sz=64, tokens=0, low_freqs=0, block_sz=8, low2high_order=None, reverse_order=None,
+                 Y_bound=None):
         self.root_dir = root_dir
         self.classes = os.listdir(root_dir)
         self.class_to_idx = {cls: i for i, cls in enumerate(self.classes)}
@@ -421,6 +405,8 @@ class DCT_4YCbCr(Dataset):
                 self.img_paths.append((os.path.join(cls_dir, img_name), self.class_to_idx[cls]))
 
         # parameters of DCT design
+        self.Y_bound = np.array(Y_bound)
+        print(f"using Y_bound {self.Y_bound} for training")
         self.tokens = tokens
         self.low_freqs = low_freqs
         self.block_sz = block_sz
@@ -491,9 +477,9 @@ class DCT_4YCbCr(Dataset):
 
         # Step 5: scale into [-1, 1]
         assert DCT_blocks.shape == (self.tokens, 6, self.block_sz*self.block_sz)
-        DCT_blocks[:, :4 :] = (DCT_blocks[:, :4 :] - Y_mean) / Y_bound
-        DCT_blocks[:, 4, :] = (DCT_blocks[:, 4, :] - Cb_mean) / Cb_bound
-        DCT_blocks[:, 5, :] = (DCT_blocks[:, 5, :] - Cr_mean) / Cr_bound
+        DCT_blocks[:, :4 :] = (DCT_blocks[:, :4 :]) / self.Y_bound
+        DCT_blocks[:, 4, :] = (DCT_blocks[:, 4, :]) / self.Y_bound
+        DCT_blocks[:, 5, :] = (DCT_blocks[:, 5, :]) / self.Y_bound
 
         # Step 6: reorder coe from low to high freq, then mask out high-freq signals
         DCT_blocks = DCT_blocks[:, :, self.low2high_order]  # (64, 6, 16) --> (64, 6, 16)
@@ -683,15 +669,15 @@ class DCT_4YCbCr_cond(Dataset):
 
 
 class CelebA(DatasetFactory):
-    def __init__(self, path, resolution=0, tokens=0, low_freqs=0, block_sz=0, low2high_order=None,
-                 fid_stat=None, reverse_order=None):
+    def __init__(self, path, resolution=0, tokens=0, low_freqs=0, block_sz=0, low2high_order=None, reverse_order=None,
+                 Y_bound=None, **kwargs):
         super().__init__()
 
         self.resolution = resolution
         self.tokens = tokens
         self.low_freqs = low_freqs
-        transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
-                                        transforms.Normalize(0.5, 0.5)])
+        # transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+        #                                 transforms.Normalize(0.5, 0.5)])
         """
         manually download dataset: https://drive.usercontent.google.com/download?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM&authuser=0
         then do center crop to 64x64 and set the image folder as the following 'path'
@@ -699,6 +685,7 @@ class CelebA(DatasetFactory):
         self.train = DCT_4YCbCr(
             root_dir=path, img_sz=resolution, tokens=tokens,
             low_freqs=low_freqs, block_sz=block_sz, low2high_order=low2high_order, reverse_order=reverse_order,
+            Y_bound=Y_bound
         )
         # self.train = UnlabeledDataset(self.train)
 
@@ -709,7 +696,7 @@ class CelebA(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return 'assets/fid_stats/fid_stats_celeba64_all.npz'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_celeba64_all.npz'
 
     @property
     def has_label(self):
@@ -717,8 +704,8 @@ class CelebA(DatasetFactory):
 
 
 class FFHQ128(DatasetFactory):
-    def __init__(self, path, resolution=128, tokens=0, low_freqs=0, block_sz=0, low2high_order=None,
-                 fid_stat=None, reverse_order=None):
+    def __init__(self, path, resolution=128, tokens=0, low_freqs=0, block_sz=0, low2high_order=None, reverse_order=None,
+                 Y_bound=None, **kwargs):
         super().__init__()
 
         self.resolution = resolution
@@ -730,6 +717,7 @@ class FFHQ128(DatasetFactory):
         self.train = DCT_4YCbCr(
             root_dir=path, img_sz=resolution, tokens=tokens,
             low_freqs=low_freqs, block_sz=block_sz, low2high_order=low2high_order, reverse_order=reverse_order,
+            Y_bound=Y_bound
         )
         # self.train = UnlabeledDataset(self.train)
 
@@ -740,7 +728,7 @@ class FFHQ128(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return 'assets/fid_stats/fid_stats_ffhq128_jpg.npz'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq128_jpg.npz'
 
     @property
     def has_label(self):
@@ -748,8 +736,8 @@ class FFHQ128(DatasetFactory):
 
 
 class FFHQ256(DatasetFactory):
-    def __init__(self, path, resolution=0, tokens=0, low_freqs=0, block_sz=0, low2high_order=None,
-                 fid_stat=None, reverse_order=None):
+    def __init__(self, path, resolution=0, tokens=0, low_freqs=0, block_sz=0, low2high_order=None, reverse_order=None,
+                 Y_bound=None, **kwargs):
         super().__init__()
 
         self.resolution = resolution
@@ -761,6 +749,7 @@ class FFHQ256(DatasetFactory):
         self.train = DCT_4YCbCr(
             root_dir=path, img_sz=resolution, tokens=tokens,
             low_freqs=low_freqs, block_sz=block_sz, low2high_order=low2high_order, reverse_order=reverse_order,
+            Y_bound=Y_bound
         )
         # self.train = UnlabeledDataset(self.train)
 
@@ -771,7 +760,7 @@ class FFHQ256(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return 'assets/fid_stats/fid_stats_ffhq256_jpg.npz'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq256_jpg.npz'
 
     @property
     def has_label(self):
@@ -818,7 +807,7 @@ class ImageNet64(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return f'assets/fid_stats/fid_stats_imgnet64_jpg.npz'
+        return f'/data/scratch/U-ViT2/assets/fid_stats/fid_stats_imgnet64_jpg.npz'
 
     def sample_label(self, n_samples, device):
         return torch.multinomial(self.cnt, n_samples, replacement=True).to(device)
