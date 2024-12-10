@@ -54,7 +54,7 @@ def get_config():
 
     config.dataset = d(
         name='ffhq256',
-        path='/home/mning2/datasets/ffhq256_jpg',  # /data/clusterfs/mld/users/lanliu/mang/datasets/ffhq256
+        path='/data/scratch/datasets/ffhq256',  # /data/clusterfs/mld/users/lanliu/mang/datasets/ffhq256
         resolution=256,
     )
 
