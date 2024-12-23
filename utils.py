@@ -189,13 +189,6 @@ def idct_transform(blocks):
 
 
 def DCT_to_RGB(sample, tokens=0, low_freqs=0, block_sz=0, reverse_order=None, resolution=0, Y_bound=None):
-    # cb_index = [i for i in range(4, tokens, 6)]
-    # cr_index = [i for i in range(5, tokens, 6)]
-    # y_index = [i for i in range(0, tokens) if i not in cb_index and i not in cr_index]
-    # assert len(y_index) + len(cb_index) + len(cr_index) == tokens
-    # y_tokens = int((tokens / 6) * 4)
-    # cb_tokens = int(tokens / 6)
-
     num_y_blocks = tokens * 4
     num_cb_blocks = tokens
     cb_blocks_per_row = int((resolution / block_sz) / 2)

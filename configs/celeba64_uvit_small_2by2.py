@@ -9,7 +9,7 @@ def d(**kwargs):
 def get_config():
     config = ml_collections.ConfigDict()
 
-    config.seed = 1234
+    config.seed = 123456
     config.pred = 'noise_pred'
 
     config.train = d(
@@ -36,7 +36,7 @@ def get_config():
     config.nnet = d(
         name='uvit',
         tokens=256,  # number of tokens to the network
-        low_freqs=4,  # 15, 21, 28, 36, 43
+        low_freqs=4,  # B*B - m
         embed_dim=512,
         depth=12,
         num_heads=8,
@@ -48,15 +48,15 @@ def get_config():
 
     config.dataset = d(
         name='celeba',
-        path='/data/scratch/datasets/celeba64',  # /home/mang/Downloads/celeba, /data/clusterfs/mld/users/lanliu/mang/datasets/celeba64, ../datasets/celeba
+        path='/data/scratch/datasets/celeba64',
         resolution=64,
         tokens=256,  # number of tokens to the network
-        low_freqs=4,  # could be 10, 13, 15, 16 (<=16)
-        block_sz=2,  # size of DCT block
+        low_freqs=4,  # B*B - m
+        block_sz=2,  # B
         low2high_order=[0, 1, 2, 3],
         reverse_order= [0, 1, 2, 3],
-        Y_bound=[244.925, 244.925, 244.925, 244.925],
-        Y_std=[6.507, 3.297, 3.063, 1.844],
+        Y_bound=[244.925],  # eta
+        Y_std=[6.507, 3.297, 3.063, 1.844],  # Entropy-Based Frequency Reweighting (EBFR)
         Cb_std=[4.013, 1.287, 1.06, 1.0],
         Cr_std=[4.239, 1.422, 1.204, 1.0],
         SNR_scale=4.0,

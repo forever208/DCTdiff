@@ -43,9 +43,9 @@ def evaluate(config):
             _cond = nnet(x, timesteps, y=y)
             _uncond = nnet(x, timesteps, y=torch.tensor([dataset.K] * x.size(0), device=device))
             return _cond + config.sample.scale * (_cond - _uncond)
-        score_model = sde.ScoreModel(cfg_nnet, pred=config.pred, sde=sde.VPSDE())
+        score_model = sde.ScoreModel(cfg_nnet, pred=config.pred, sde=sde.VPSDE(SNR_scale=config.dataset.SNR_scale))
     else:
-        score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE())
+        score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE(SNR_scale=config.dataset.SNR_scale))
 
     logging.info(config.sample)
     assert os.path.exists(dataset.fid_stat)
@@ -67,7 +67,7 @@ def evaluate(config):
             rsde = sde.ODE(score_model)
             return sde.euler_maruyama(rsde, x_init, config.sample.sample_steps, verbose=accelerator.is_main_process, **kwargs)
         elif config.sample.algorithm == 'dpm_solver':
-            noise_schedule = NoiseScheduleVP(schedule='linear')
+            noise_schedule = NoiseScheduleVP(schedule='linear', SNR_scale=config.dataset.SNR_scale)
             model_fn = model_wrapper(
                 score_model.noise_pred,
                 noise_schedule,

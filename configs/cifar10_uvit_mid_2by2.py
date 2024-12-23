@@ -36,7 +36,7 @@ def get_config():
     config.nnet = d(
         name='uvit',
         tokens=64,  # number of tokens to the network
-        low_freqs=4,  # 15, 21, 28, 36, 43
+        low_freqs=4,  # B*B - m
         embed_dim=768,
         depth=16,
         num_heads=12,
@@ -48,15 +48,15 @@ def get_config():
 
     config.dataset = d(
         name='cifar10',
-        path='/data/scratch/datasets/cifar10',  # /home/mning2/datasets/cifar10  /home/mang/Downloads/cifar10
+        path='/data/scratch/datasets/cifar10',
         resolution=32,
         tokens=64,  # number of tokens to the network
-        low_freqs=4,  # could be 10, 13, 15, 16 (<=16)
-        block_sz=2,  # size of DCT block
+        low_freqs=4,  # B*B - m
+        block_sz=2,  # B
         low2high_order=[0, 1, 2, 3],
         reverse_order= [0, 1, 2, 3],
-        Y_bound=[242.382, 242.382, 242.382, 242.382],
-        Y_std=[6.471, 3.588, 3.767, 2.411],
+        Y_bound=[242.382],  # eta
+        Y_std=[6.471, 3.588, 3.767, 2.411],  # Entropy-Based Frequency Reweighting (EBFR)
         Cb_std=[4.308, 1.315, 1.487, 1.0],
         Cr_std=[4.014, 1.284, 1.435, 1.0],
         SNR_scale=2.0,
@@ -64,7 +64,7 @@ def get_config():
 
     config.sample = d(
         sample_steps=50,
-        n_samples=50000,
+        n_samples=10000,
         mini_batch_size=500,
         algorithm='dpm_solver',
         path=None

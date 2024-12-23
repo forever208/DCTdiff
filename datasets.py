@@ -113,8 +113,7 @@ class CIFAR10(DatasetFactory):
         self.resolution = resolution
         self.tokens = tokens
         self.low_freqs = low_freqs
-        transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
-                                        transforms.Normalize(0.5, 0.5)])
+
         self.train = DCT_4YCbCr(
             root_dir=path, img_sz=resolution, tokens=tokens,
             low_freqs=low_freqs, block_sz=block_sz, low2high_order=low2high_order, reverse_order=reverse_order,
@@ -129,7 +128,7 @@ class CIFAR10(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_cifar10_train.npz'
+        return 'assets/fid_stats/fid_stats_cifar10_train.npz'
 
     @property
     def has_label(self):
@@ -138,8 +137,6 @@ class CIFAR10(DatasetFactory):
 
 
 # ImageNet
-
-
 class FeatureDataset(Dataset):
     def __init__(self, path):
         super().__init__()
@@ -491,85 +488,6 @@ class DCT_4YCbCr(Dataset):
 
         return DCT_blocks
 
-        # """debug DCT to RGB"""
-        # tokens = self.tokens
-        # low_freqs = self.low_freqs
-        # block_sz = self.block_sz
-        # reverse_order = self.reverse_order
-        # resolution=64
-        # cb_blocks_per_row = int((resolution / block_sz) / 2)
-        # Y_blocks_per_row = int(resolution / block_sz)
-        #
-        # cb_index = [i for i in range(4, tokens, 6)]
-        # cr_index = [i for i in range(5, tokens, 6)]
-        # y_index = [i for i in range(0, tokens) if i not in cb_index and i not in cr_index]
-        # assert len(y_index) + len(cb_index) + len(cr_index) == tokens
-        # y_tokens = int((tokens / 6) * 4)
-        # cb_tokens = int(tokens / 6)
-        #
-        # sample = DCT_blocks.numpy()
-        # assert sample.shape == (tokens, low_freqs)
-        # # sample = np.clip(sample, -2, 2)  # clamp into [-1, 1]
-        #
-        # # fill up DCT coes
-        # DCT = np.zeros((tokens, block_sz * block_sz))
-        # DCT[:, :low_freqs] = sample
-        # DCT = DCT[:, reverse_order]  # convert the low to high freq order back to sequential order
-        #
-        # # DCT_Cb = ((DCT[cb_index, :] * CELEBA64_Cb_99_centered) + CELEBA64_Cb_mean)
-        # # DCT_Cr = ((DCT[cr_index, :] * CELEBA64_Cr_99_centered) + CELEBA64_Cr_mean)
-        # DCT_Cb = DCT[cb_index, :]
-        # DCT_Cr = DCT[cr_index, :]
-        # DCT_Cb = DCT_Cb.reshape(cb_tokens, block_sz, block_sz)  # (16, 64) --> (16, 8, 8)
-        # DCT_Cr = DCT_Cr.reshape(cb_tokens, block_sz, block_sz)  # (16, 64) --> (16, 8, 8)
-        #
-        # y_blocks = []
-        # # DCT_Y = (DCT[y_index, :] * CELEBA64_Y_99_centered) + CELEBA64_Y_mean  # (64, 64)
-        # DCT_Y = DCT[y_index, :]
-        # for row in range(cb_blocks_per_row):  # 16 cb/cr blocks, so 4*4 spatial blocks
-        #     tem_ls = []
-        #     for col in range(cb_blocks_per_row):
-        #         ind = row * (Y_blocks_per_row * 2) + col * 4
-        #         y_blocks.append(DCT_Y[ind, :])
-        #         y_blocks.append(DCT_Y[ind + 1, :])
-        #         tem_ls.append(DCT_Y[ind + 2, :])
-        #         tem_ls.append(DCT_Y[ind + 3, :])
-        #     for ele in tem_ls:
-        #         y_blocks.append(ele)
-        # DCT_Y = np.array(y_blocks).reshape(y_tokens, block_sz, block_sz)
-        #
-        # # Apply Inverse DCT on each block
-        # idct_y_blocks = idct_transform(DCT_Y)
-        # idct_cb_blocks = idct_transform(DCT_Cb)
-        # idct_cr_blocks = idct_transform(DCT_Cr)
-        #
-        # # Combine blocks back into images
-        # height, width = resolution, resolution
-        # y_reconstructed = combine_blocks(idct_y_blocks, height, width, block_sz)
-        # cb_reconstructed = combine_blocks(idct_cb_blocks, int(height / 2), int(width / 2), block_sz)
-        # cr_reconstructed = combine_blocks(idct_cr_blocks, int(height / 2), int(width / 2), block_sz)
-        #
-        # # Upsample Cb and Cr to original size
-        # cb_upsampled = cv2.resize(cb_reconstructed, (width, height), interpolation=cv2.INTER_LINEAR)
-        # cr_upsampled = cv2.resize(cr_reconstructed, (width, height), interpolation=cv2.INTER_LINEAR)
-        #
-        # # Step 5: Convert YCbCr back to RGB
-        # R = y_reconstructed + 1.402 * (cr_upsampled - 128)
-        # G = y_reconstructed - 0.344136 * (cb_upsampled - 128) - 0.714136 * (cr_upsampled - 128)
-        # B = y_reconstructed + 1.772 * (cb_upsampled - 128)
-        #
-        # rgb_reconstructed = np.zeros((height, width, 3))
-        # rgb_reconstructed[:, :, 0] = np.clip(R, 0, 255)
-        # rgb_reconstructed[:, :, 1] = np.clip(G, 0, 255)
-        # rgb_reconstructed[:, :, 2] = np.clip(B, 0, 255)
-        #
-        # # Convert to uint8
-        # rgb_reconstructed = np.uint8(rgb_reconstructed)  # (h, w, 3), RGB channels
-        # final_image = Image.fromarray(rgb_reconstructed)
-        # final_image.save('recon_pure_manual.jpg')
-        # time.sleep(3)
-        # raise ValueError
-
 
 class DCT_4YCbCr_cond(Dataset):
     def __init__(self, img_sz=64, tokens=0, low_freqs=0, block_sz=8, low2high_order=None, reverse_order=None,
@@ -676,8 +594,7 @@ class CelebA(DatasetFactory):
         self.resolution = resolution
         self.tokens = tokens
         self.low_freqs = low_freqs
-        # transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
-        #                                 transforms.Normalize(0.5, 0.5)])
+
         """
         manually download dataset: https://drive.usercontent.google.com/download?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM&authuser=0
         then do center crop to 64x64 and set the image folder as the following 'path'
@@ -696,7 +613,7 @@ class CelebA(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_celeba64_all.npz'
+        return 'assets/fid_stats/fid_stats_celeba64_all.npz'
 
     @property
     def has_label(self):
@@ -711,8 +628,6 @@ class FFHQ128(DatasetFactory):
         self.resolution = resolution
         self.tokens = tokens
         self.low_freqs = low_freqs
-        # transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
-        #                                 transforms.Normalize(0.5, 0.5)])
 
         self.train = DCT_4YCbCr(
             root_dir=path, img_sz=resolution, tokens=tokens,
@@ -728,7 +643,7 @@ class FFHQ128(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq128_jpg.npz'
+        return 'assets/fid_stats/fid_stats_ffhq128_jpg.npz'
 
     @property
     def has_label(self):
@@ -743,8 +658,6 @@ class FFHQ256(DatasetFactory):
         self.resolution = resolution
         self.tokens = tokens
         self.low_freqs = low_freqs
-        # transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
-        #                                 transforms.Normalize(0.5, 0.5)])
 
         self.train = DCT_4YCbCr(
             root_dir=path, img_sz=resolution, tokens=tokens,
@@ -760,7 +673,7 @@ class FFHQ256(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq256_jpg.npz'
+        return 'assets/fid_stats/fid_stats_ffhq256_jpg.npz'
 
     @property
     def has_label(self):
@@ -807,7 +720,7 @@ class ImageNet64(DatasetFactory):
     @property
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
-        return f'/data/scratch/U-ViT2/assets/fid_stats/fid_stats_imgnet64_jpg.npz'
+        return f'assets/fid_stats/fid_stats_imgnet64_jpg.npz'
 
     def sample_label(self, n_samples, device):
         return torch.multinomial(self.cnt, n_samples, replacement=True).to(device)
@@ -932,12 +845,12 @@ class MSCOCO256Features(DatasetFactory):  # the moments calculated by Stable Dif
 def get_dataset(name, **kwargs):
     if name == 'cifar10':
         return CIFAR10(**kwargs)
-    elif name == 'imagenet':
-        return ImageNet(**kwargs)
-    elif name == 'imagenet256_features':
-        return ImageNet256Features(**kwargs)
-    elif name == 'imagenet512_features':
-        return ImageNet512Features(**kwargs)
+    # elif name == 'imagenet':
+    #     return ImageNet(**kwargs)
+    # elif name == 'imagenet256_features':
+    #     return ImageNet256Features(**kwargs)
+    # elif name == 'imagenet512_features':
+    #     return ImageNet512Features(**kwargs)
     elif name == 'celeba':
         return CelebA(**kwargs)
     elif name == 'ffhq128':
@@ -946,7 +859,7 @@ def get_dataset(name, **kwargs):
         return FFHQ256(**kwargs)
     elif name == 'imgnet64':
         return ImageNet64(**kwargs)
-    elif name == 'mscoco256_features':
-        return MSCOCO256Features(**kwargs)
+    # elif name == 'mscoco256_features':
+    #     return MSCOCO256Features(**kwargs)
     else:
         raise NotImplementedError(name)

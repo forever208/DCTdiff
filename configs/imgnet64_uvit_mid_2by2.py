@@ -36,7 +36,7 @@ def get_config():
     config.nnet = d(
         name='uvit',
         tokens=256,  # number of tokens to the network
-        low_freqs=4,  # 15, 21, 28, 36, 43
+        low_freqs=4,  # B*B - m
         embed_dim=768,
         depth=16,
         num_heads=12,
@@ -49,23 +49,23 @@ def get_config():
 
     config.dataset = d(
         name='imgnet64',
-        path='/data/clusterfs/mld/users/lanliu/mang/datasets/imagenet64/train',  # /home/mang/Downloads/train
+        path='/data/scratch/datasets/imagenet64/train',
         resolution=64,
         tokens=256,  # number of tokens to the network
-        low_freqs=4,  # could be 10, 13, 15, 16 (<=16)
-        block_sz=2,  # size of DCT block
+        low_freqs=4,  # B*B - m
+        block_sz=2,  # B
         low2high_order=[0, 1, 2, 3],
-        reverse_order= [0, 1, 2, 3],
-        Y_bound=[248.875, 248.875, 248.875, 248.875],
-        Y_std=[6.523, 3.402, 3.407, 2.42],
-        Cb_std = [4.286, 1.343, 1.365, 0.988],
-        Cr_std=[4.096, 1.309, 1.319, 0.987],
+        reverse_order=[0, 1, 2, 3],
+        Y_bound=[247.125],  # eta
+        Y_std=[6.522, 3.377, 3.386, 2.389],  # Entropy-Based Frequency Reweighting (EBFR)
+        Cb_std=[4.27, 1.329, 1.351, 0.988],
+        Cr_std=[4.078, 1.292, 1.303, 0.987],
         SNR_scale=4.0,
     )
 
     config.sample = d(
         sample_steps=50,
-        n_samples=50000,
+        n_samples=10000,
         mini_batch_size=250,
         algorithm='dpm_solver',
         path=None
