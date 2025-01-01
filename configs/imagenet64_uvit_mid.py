@@ -17,8 +17,8 @@ def get_config():
         batch_size=1024,
         mode='cond',
         log_interval=100,
-        eval_interval=25000,
-        save_interval=25000,
+        eval_interval=50000,
+        save_interval=50000,
     )
 
     config.optimizer = d(
@@ -48,17 +48,18 @@ def get_config():
     )
 
     config.dataset = d(
-        name='imagenet',
-        path='/data/clusterfs/mld/users/lanliu/mang/datasets/imagenet64',
+        name='imagenet64',
+        path='/data/scratch/datasets/imagenet64',
         resolution=64,
     )
 
     config.sample = d(
-        sample_steps=50,
+        sample_steps=100,
         n_samples=50000,
         mini_batch_size=250,
-        algorithm='dpm_solver',
-        path=''
+        algorithm='euler_maruyama_ode',
+        path='',  # if not none, generated images will be saved into this folder
+        save_npz=''  # leave it none in training; set the npz file path during eval
     )
 
     return config

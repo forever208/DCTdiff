@@ -23,20 +23,20 @@ def get_config():
 
     config.optimizer = d(
         name='adamw',
-        lr=0.0002,
+        lr=0.0003,
         weight_decay=0.03,
         betas=(0.99, 0.999),
     )
 
     config.lr_scheduler = d(
         name='customized',
-        warmup_steps=2500
+        warmup_steps=50000
     )
 
     config.nnet = d(
         name='uvit',
         img_size=32,
-        patch_size=2,
+        patch_size=4,
         embed_dim=512,
         depth=12,
         num_heads=8,
@@ -52,11 +52,12 @@ def get_config():
     )
 
     config.sample = d(
-        sample_steps=50,
+        sample_steps=100,
         n_samples=50000,
         mini_batch_size=500,
-        algorithm='dpm_solver',
-        path=''
+        algorithm='euler_maruyama_ode',
+        path='',  # if not none, generated images will be saved into this folder
+        save_npz=''  # leave it none in training; set the npz file path during eval
     )
 
     return config

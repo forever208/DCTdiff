@@ -83,6 +83,16 @@ def train(config):
     def train_step(_batch):
         _metrics = dict()
         optimizer.zero_grad()
+
+        # """GFLOPs calculation (set batch_size = 1)"""
+        # from thop import profile
+        # t = torch.ones((_batch.shape[0])).to(_batch.device)
+        # flops, params = profile(nnet, inputs=(_batch, t))
+        # gflops = flops / 1e9
+        # print(f"gFLOPs: {gflops}")
+        # print(f"number of parameters: {params}")
+        # raise ValueError
+
         if config.train.mode == 'uncond':
             loss = sde.LSimple(score_model, _batch, pred=config.pred)
         elif config.train.mode == 'cond':
@@ -210,7 +220,7 @@ def train(config):
         accelerator.wait_for_everyone()
 
         # save ckpt and compute FID
-        if train_state.step >= 50000 and train_state.step % config.train.save_interval == 0 or train_state.step == config.train.n_steps:
+        if train_state.step >= 100000 and train_state.step % config.train.save_interval == 0 or train_state.step == config.train.n_steps:
             logging.info(f'Save and eval checkpoint {train_state.step}...')
             if accelerator.local_process_index == 0:
                 train_state.save(os.path.join(config.ckpt_root, f'{train_state.step}.ckpt'))

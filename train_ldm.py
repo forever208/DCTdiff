@@ -19,6 +19,7 @@ import os
 import libs.autoencoder
 from datetime import timedelta
 from accelerate import InitProcessGroupKwargs
+from thop import profile
 
 
 def train(config):
@@ -93,6 +94,35 @@ def train(config):
     def train_step(_batch):
         _metrics = dict()
         optimizer.zero_grad()
+
+        """GFLOPs calculation (set batch_size = 1)"""
+        # flops, params = profile(autoencoder, inputs=(_batch, 'encode'))
+        # Encoder_gflops = flops / 1e9
+        # print(f"VAE encoder gFLOPs: {Encoder_gflops}")
+        # print(f"number of VAE encoder parameters: {params}")
+        #
+        # if config.dataset.resolution == 256:
+        #     eps = torch.ones((1, 4, 32, 32)).to(_batch.device)
+        # elif config.dataset.resolution == 512:
+        #     eps = torch.ones((1, 4, 64, 64)).to(_batch.device)
+        # else:
+        #     raise ValueError
+        #
+        # flops, params = profile(autoencoder, inputs=(eps, 'decode'))
+        # Decoder_gflops = flops / 1e9
+        # print(f"VAE decoder gFLOPs: {Decoder_gflops}")
+        # print(f"number of VAE decoder parameters: {params}")
+        #
+        # t = torch.ones((_batch.shape[0])).to(_batch.device)
+        # z = encode(_batch)
+        # flops, params = profile(nnet, inputs=(z, t))
+        # Diff_gflops = flops / 1e9
+        # print(f"Diffusion gFLOPs: {Diff_gflops}")
+        # print(f"number of parameters: {params}")
+        # print(f"total training gFLOPs {Encoder_gflops + Diff_gflops}")
+        # print(f"total inference gFLOPs {Decoder_gflops} + NFE * {Diff_gflops}")
+        # raise ValueError
+
         if config.train.mode == 'uncond':
             _z = autoencoder.sample(_batch) if 'feature' in config.dataset.name else encode(_batch)
             loss = sde.LSimple(score_model, _z, pred=config.pred)
@@ -222,7 +252,7 @@ def train(config):
         accelerator.wait_for_everyone()
 
         # save ckpt and compute FID
-        if train_state.step % config.train.save_interval == 0 or train_state.step == config.train.n_steps:
+        if train_state.step >= 100000 and train_state.step % config.train.save_interval == 0:
             torch.cuda.empty_cache()
             logging.info(f'Save and eval checkpoint {train_state.step}...')
             if accelerator.local_process_index == 0:

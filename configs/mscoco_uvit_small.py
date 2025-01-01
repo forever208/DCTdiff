@@ -65,7 +65,7 @@ def get_config():
         mini_batch_size=50,
         cfg=True,
         scale=1.,
-        path=''
+        path=''  # if not none, generated images will be saved into this folder
     )
 
     return config

@@ -118,7 +118,13 @@ def evaluate(config):
         utils.sample2dir(accelerator, path, config.sample.n_samples, config.sample.mini_batch_size, sample_fn, dataset.unpreprocess)
         if accelerator.is_main_process:
             fid = calculate_fid_given_paths((dataset.fid_stat, path))
-            logging.info(f'nnet_path={config.nnet_path}, fid={fid}')
+            logging.info(f'nnet_path={config.nnet_path}')
+            logging.info(f'fid={fid}')
+            logging.info(f' ')
+
+            if config.sample.save_npz:
+                utils.images_to_npz(path, config.sample.save_npz)  # save all images into a single npz file
+                logging.info(f'samples saved into {config.sample.save_npz}')
 
 
 from absl import flags

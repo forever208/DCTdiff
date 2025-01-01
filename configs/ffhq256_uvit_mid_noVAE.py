@@ -57,7 +57,7 @@ def get_config():
         n_samples=10000,
         mini_batch_size=100,
         algorithm='dpm_solver',
-        path=''
+        path=''  # if not none, generated images will be saved into this folder
     )
 
     return config

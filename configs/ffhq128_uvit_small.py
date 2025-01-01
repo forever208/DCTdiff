@@ -17,8 +17,8 @@ def get_config():
         batch_size=256,
         mode='uncond',
         log_interval=100,
-        eval_interval=25000,
-        save_interval=25000,
+        eval_interval=50000,
+        save_interval=50000,
     )
 
     config.optimizer = d(
@@ -57,7 +57,8 @@ def get_config():
         n_samples=10000,
         mini_batch_size=500,
         algorithm='dpm_solver',
-        path=''
+        path='',  # if not none, generated images will be saved into this folder
+        save_npz=''  # leave it none in training; set the npz file path during eval
     )
 
     return config

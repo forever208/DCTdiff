@@ -380,7 +380,6 @@ class Crop(object):
 
 
 class CIFAR10(DatasetFactory):
-
     def __init__(self, path, resolution=32):
         super().__init__()
 
@@ -408,7 +407,6 @@ class CIFAR10(DatasetFactory):
 
 
 class CelebA(DatasetFactory):
-
     def __init__(self, path, resolution=64):
         super().__init__()
 
@@ -437,7 +435,6 @@ class CelebA(DatasetFactory):
 
 
 class FFHQ128(DatasetFactory):
-
     def __init__(self, path, resolution=128):
         super().__init__()
 
@@ -463,7 +460,6 @@ class FFHQ128(DatasetFactory):
 
 
 class FFHQ256(DatasetFactory):
-
     def __init__(self, path, resolution=256):
         super().__init__()
 
@@ -482,6 +478,56 @@ class FFHQ256(DatasetFactory):
         # specify the fid_stats file that will be used for FID computation during the training
         # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
         return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq256_jpg.npz'
+
+    @property
+    def has_label(self):
+        return False
+
+
+class FFHQ512(DatasetFactory):
+    def __init__(self, path, resolution=512):
+        super().__init__()
+
+        self.resolution = resolution
+        transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+                                        transforms.Normalize(0.5, 0.5)])
+        self.train = datasets.ImageFolder(root=path, transform=transform)
+        self.train = UnlabeledDataset(self.train)
+
+    @property
+    def data_shape(self):
+        return 3, self.resolution, self.resolution
+
+    @property
+    def fid_stat(self):
+        # specify the fid_stats file that will be used for FID computation during the training
+        # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq512_jpg.npz'
+
+    @property
+    def has_label(self):
+        return False
+
+
+class AFHQ512(DatasetFactory):
+    def __init__(self, path, resolution=512):
+        super().__init__()
+
+        self.resolution = resolution
+        transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+                                        transforms.Normalize(0.5, 0.5)])
+        self.train = datasets.ImageFolder(root=path, transform=transform)
+        self.train = UnlabeledDataset(self.train)
+
+    @property
+    def data_shape(self):
+        return 3, self.resolution, self.resolution
+
+    @property
+    def fid_stat(self):
+        # specify the fid_stats file that will be used for FID computation during the training
+        # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_afhq512_jpg.npz'
 
     @property
     def has_label(self):
@@ -618,6 +664,10 @@ def get_dataset(name, **kwargs):
         return FFHQ128(**kwargs)
     elif name == 'ffhq256':
         return FFHQ256(**kwargs)
+    elif name == 'ffhq512':
+        return FFHQ512(**kwargs)
+    elif name == 'afhq512':
+        return AFHQ512(**kwargs)
     elif name == 'mscoco256_features':
         return MSCOCO256Features(**kwargs)
     else:

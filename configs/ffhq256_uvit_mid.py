@@ -14,7 +14,7 @@ def get_config():
     config.z_shape = (4, 32, 32)
 
     config.autoencoder = d(
-        pretrained_path='assets/stable-diffusion/autoencoder_kl.pth'
+        pretrained_path='/data/scratch/U-ViT2/assets/stable-diffusion/autoencoder_kl.pth'
     )
 
     config.train = d(
@@ -59,11 +59,11 @@ def get_config():
     )
 
     config.sample = d(
-        sample_steps=50,
+        sample_steps=100,
         n_samples=10000,
-        mini_batch_size=50,  # the decoder is large
-        algorithm='dpm_solver',
-        path=''
+        mini_batch_size=25,  # the decoder is large
+        algorithm='euler_maruyama_ode',
+        path=''  # if not none, generated images will be saved into this folder
     )
 
     return config

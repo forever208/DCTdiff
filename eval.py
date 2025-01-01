@@ -10,6 +10,7 @@ import tempfile
 from dpm_solver_pytorch import NoiseScheduleVP, model_wrapper, DPM_Solver
 from absl import logging
 import builtins
+import shutil
 
 
 def evaluate(config):
@@ -96,6 +97,9 @@ def evaluate(config):
             logging.info(f'fid={fid}')
             logging.info(f' ')
 
+            if config.sample.save_npz:
+                utils.images_to_npz(path, config.sample.save_npz)  # save all images into a single npz file
+                logging.info(f'samples saved into {config.sample.save_npz}')
 
 from absl import flags
 from absl import app

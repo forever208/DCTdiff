@@ -253,7 +253,7 @@ def euler_maruyama(rsde, x_init, sample_steps, eps=1e-3, T=1, trace=None, verbos
     x = x_init
     if trace is not None:
         trace.append(x)
-    for s, t in tqdm(list(zip(timesteps, timesteps[1:]))[::-1], disable=not verbose, desc='euler_maruyama'):
+    for s, t in list(zip(timesteps, timesteps[1:]))[::-1]:
         drift = rsde.drift(x, t, **kwargs)
         diffusion = rsde.diffusion(t)
         dt = s - t

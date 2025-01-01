@@ -68,7 +68,7 @@ def get_config():
         algorithm='dpm_solver',
         cfg=True,
         scale=0.7,
-        path=''
+        path=''  # if not none, generated images will be saved into this folder
     )
 
     return config

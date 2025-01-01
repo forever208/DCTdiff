@@ -5,6 +5,7 @@ import os
 from tqdm import tqdm
 from torchvision.utils import save_image
 from absl import logging
+from PIL import Image
 
 
 def set_logger(log_level='info', fname=None):
@@ -174,3 +175,22 @@ def grad_norm(model):
         total_norm += param_norm.item() ** 2
     total_norm = total_norm ** (1. / 2)
     return total_norm
+
+
+def images_to_npz(directory, output_file):
+    images_list = []  # List to store image arrays
+
+    for filename in os.listdir(directory):
+        if filename.endswith(".jpg") or filename.endswith(".png"):  # Check for image files
+            file_path = os.path.join(directory, filename)
+
+            with Image.open(file_path) as img:
+                image_array = np.array(img)
+                images_list.append(image_array)
+
+    if images_list:
+        all_images_array = np.stack(images_list, axis=0)
+        np.savez(output_file, all_images_array)
+        print(f"All images have been saved to {output_file} with shape {all_images_array.shape}")
+    else:
+        print("No images to save.")
