@@ -102,60 +102,6 @@ class DatasetFactory(object):
         raise NotImplementedError
 
 
-# CIFAR10
-
-# class CIFAR10(DatasetFactory):
-#     r""" CIFAR10 dataset
-#
-#     Information of the raw dataset:
-#          train: 50,000
-#          test:  10,000
-#          shape: 3 * 32 * 32
-#     """
-#
-#     def __init__(self, path, random_flip=False, cfg=False, p_uncond=None):
-#         super().__init__()
-#
-#         transform_train = [transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]
-#         transform_test = [transforms.ToTensor(), transforms.Normalize(0.5, 0.5)]
-#         if random_flip:  # only for train
-#             transform_train.append(transforms.RandomHorizontalFlip())
-#         transform_train = transforms.Compose(transform_train)
-#         transform_test = transforms.Compose(transform_test)
-#         self.train = datasets.CIFAR10(path, train=True, transform=transform_train, download=True)
-#         self.test = datasets.CIFAR10(path, train=False, transform=transform_test, download=True)
-#
-#         assert len(self.train.targets) == 50000
-#         self.K = max(self.train.targets) + 1
-#         self.cnt = torch.tensor([len(np.where(np.array(self.train.targets) == k)[0]) for k in range(self.K)]).float()
-#         self.frac = [self.cnt[k] / 50000 for k in range(self.K)]
-#         print(f'{self.K} classes')
-#         print(f'cnt: {self.cnt}')
-#         print(f'frac: {self.frac}')
-#
-#         if cfg:  # classifier free guidance
-#             assert p_uncond is not None
-#             print(f'prepare the dataset for classifier free guidance with p_uncond={p_uncond}')
-#             self.train = CFGDataset(self.train, p_uncond, self.K)
-#
-#     @property
-#     def data_shape(self):
-#         return 3, 32, 32
-#
-#     @property
-#     def fid_stat(self):
-#         return 'assets/fid_stats/fid_stats_cifar10_train_pytorch.npz'
-#
-#     def sample_label(self, n_samples, device):
-#         return torch.multinomial(self.cnt, n_samples, replacement=True).to(device)
-#
-#     def label_prob(self, k):
-#         return self.frac[k]
-
-
-# ImageNet
-
-
 class FeatureDataset(Dataset):
     def __init__(self, path):
         super().__init__()
@@ -170,6 +116,20 @@ class FeatureDataset(Dataset):
         path = os.path.join(self.path, f'{idx}.npy')
         z, label = np.load(path, allow_pickle=True)
         return z, label
+
+
+class FeatureDataset_ffhq256(Dataset):
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+
+    def __len__(self):
+        return 70000 * 2  # consider the random flip
+
+    def __getitem__(self, idx):
+        path = os.path.join(self.path, f'{idx}.npy')
+        z = np.load(path, allow_pickle=True)
+        return z
 
 
 class ImageNet256Features(DatasetFactory):  # the moments calculated by Stable Diffusion image encoder
@@ -460,18 +420,43 @@ class FFHQ128(DatasetFactory):
 
 
 class FFHQ256(DatasetFactory):
-    def __init__(self, path, resolution=256):
+    def __init__(self, path, resolution=256, random_flip=True):
         super().__init__()
 
         self.resolution = resolution
-        transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
-                                        transforms.Normalize(0.5, 0.5)])
+        if random_flip:
+            transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor(),
+                                            transforms.Normalize(0.5, 0.5)])
+        else:
+            transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(0.5, 0.5)])
+
         self.train = datasets.ImageFolder(root=path, transform=transform)
         self.train = UnlabeledDataset(self.train)
 
     @property
     def data_shape(self):
         return 3, self.resolution, self.resolution
+
+    @property
+    def fid_stat(self):
+        # specify the fid_stats file that will be used for FID computation during the training
+        # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
+        return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq256_jpg.npz'
+
+    @property
+    def has_label(self):
+        return False
+
+
+class FFHQ256_feature(DatasetFactory):
+    def __init__(self, path, resolution=256):
+        super().__init__()
+        self.train = FeatureDataset_ffhq256(path)
+        print('latent ffhq256 dataset loaded')
+
+    @property
+    def data_shape(self):
+        return 4, 32, 32
 
     @property
     def fid_stat(self):
@@ -664,6 +649,8 @@ def get_dataset(name, **kwargs):
         return FFHQ128(**kwargs)
     elif name == 'ffhq256':
         return FFHQ256(**kwargs)
+    elif name == 'ffhq256_feature':
+        return FFHQ256_feature(**kwargs)
     elif name == 'ffhq512':
         return FFHQ512(**kwargs)
     elif name == 'afhq512':

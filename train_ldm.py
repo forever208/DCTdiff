@@ -19,7 +19,6 @@ import os
 import libs.autoencoder
 from datetime import timedelta
 from accelerate import InitProcessGroupKwargs
-from thop import profile
 
 
 def train(config):
