@@ -6,6 +6,7 @@ from tqdm import tqdm
 from torchvision.utils import save_image
 from absl import logging
 from PIL import Image
+from DCT_utils import Batch_DCT_to_RGB
 
 
 def set_logger(log_level='info', fname=None):
@@ -162,6 +163,22 @@ def sample2dir(accelerator, path, n_samples, mini_batch_size, sample_fn, unprepr
     for _batch_size in tqdm(amortize(n_samples, batch_size), disable=not accelerator.is_main_process, desc='sample2dir'):
         samples = unpreprocess_fn(sample_fn(mini_batch_size))
         samples = accelerator.gather(samples.contiguous())[:_batch_size]
+        if accelerator.is_main_process:
+            for sample in samples:
+                save_image(sample, os.path.join(path, f"{idx}.jpg"))
+                idx += 1
+
+
+def DCTsample2dir(accelerator, path, n_samples, mini_batch_size, sample_fn, block_sz, img_sz, eta):
+    os.makedirs(path, exist_ok=True)
+    idx = 0
+    batch_size = mini_batch_size * accelerator.num_processes
+
+    for _batch_size in tqdm(amortize(n_samples, batch_size), disable=not accelerator.is_main_process, desc='sample2dir'):
+        samples = sample_fn(mini_batch_size)
+        samples = Batch_DCT_to_RGB(samples, block_sz, img_sz, eta)  # DCT to RGB image (value range [-1, 1])
+        samples = accelerator.gather(samples.contiguous())[:_batch_size]
+
         if accelerator.is_main_process:
             for sample in samples:
                 save_image(sample, os.path.join(path, f"{idx}.jpg"))

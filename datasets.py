@@ -132,6 +132,20 @@ class FeatureDataset_ffhq256(Dataset):
         return z
 
 
+class FeatureDataset_celeba256(Dataset):
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+
+    def __len__(self):
+        return 30000
+
+    def __getitem__(self, idx):
+        path = os.path.join(self.path, f'{idx}.npy')
+        z = np.load(path, allow_pickle=True)
+        return z
+
+
 class ImageNet256Features(DatasetFactory):  # the moments calculated by Stable Diffusion image encoder
     def __init__(self, path, cfg=False, p_uncond=None):
         super().__init__()
@@ -366,7 +380,7 @@ class CIFAR10(DatasetFactory):
         return False
 
 
-class CelebA(DatasetFactory):
+class Celeba64(DatasetFactory):
     def __init__(self, path, resolution=64):
         super().__init__()
 
@@ -448,7 +462,7 @@ class FFHQ256(DatasetFactory):
         return False
 
 
-class FFHQ256_feature(DatasetFactory):
+class FFHQ256_features(DatasetFactory):
     def __init__(self, path, resolution=256):
         super().__init__()
         self.train = FeatureDataset_ffhq256(path)
@@ -463,6 +477,27 @@ class FFHQ256_feature(DatasetFactory):
         # specify the fid_stats file that will be used for FID computation during the training
         # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
         return '/data/scratch/U-ViT2/assets/fid_stats/fid_stats_ffhq256_jpg.npz'
+
+    @property
+    def has_label(self):
+        return False
+
+
+class Celeba256_features(DatasetFactory):
+    def __init__(self, path, resolution=256):
+        super().__init__()
+        self.train = FeatureDataset_celeba256(path)
+        print('latent celeba256 dataset loaded')
+
+    @property
+    def data_shape(self):
+        return 4, 32, 32
+
+    @property
+    def fid_stat(self):
+        # specify the fid_stats file that will be used for FID computation during the training
+        # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
+        return '/leonardo_work/EUHPC_B29_014/U-ViT2/assets/fid_stats/fid_stats_celeba256_jpg.npz'
 
     @property
     def has_label(self):
@@ -643,14 +678,16 @@ def get_dataset(name, **kwargs):
         return ImageNet256Features(**kwargs)
     elif name == 'imagenet512_features':
         return ImageNet512Features(**kwargs)
-    elif name == 'celeba':
-        return CelebA(**kwargs)
+    elif name == 'celeba64':
+        return Celeba64(**kwargs)
+    elif name == 'celeba256_features':
+        return Celeba256_features(**kwargs)
     elif name == 'ffhq128':
         return FFHQ128(**kwargs)
     elif name == 'ffhq256':
         return FFHQ256(**kwargs)
-    elif name == 'ffhq256_feature':
-        return FFHQ256_feature(**kwargs)
+    elif name == 'ffhq256_features':
+        return FFHQ256_features(**kwargs)
     elif name == 'ffhq512':
         return FFHQ512(**kwargs)
     elif name == 'afhq512':

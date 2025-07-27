@@ -10,7 +10,11 @@ import tempfile
 from dpm_solver_pytorch import NoiseScheduleVP, model_wrapper, DPM_Solver
 from absl import logging
 import builtins
-import libs.autoencoder
+from libs.config import LDMConfig
+from libs.vae import VAE
+from safetensors.torch import load_file
+import yaml
+import shutil
 
 
 def evaluate(config):
@@ -34,22 +38,32 @@ def evaluate(config):
 
     dataset = get_dataset(**config.dataset)
 
+    # load diffusion network
     nnet = utils.get_nnet(**config.nnet)
     nnet = accelerator.prepare(nnet)
     logging.info(f'load nnet from {config.nnet_path}')
     accelerator.unwrap_model(nnet).load_state_dict(torch.load(config.nnet_path, map_location='cpu'))
     nnet.eval()
 
-    autoencoder = libs.autoencoder.get_model(config.autoencoder.pretrained_path)
-    autoencoder.to(device)
+    # load AutoEncoder
+    with open(config.autoencoder.ldm_config_path, "r") as f:
+        vae_config_file = yaml.safe_load(f)
+        vae_config = LDMConfig(**vae_config_file["vae"])
+
+    SDVAE = VAE(vae_config)
+    state_dict = load_file(config.autoencoder.pretrained_path)  # load safetensor
+    SDVAE.load_state_dict(state_dict, strict=True)
+    SDVAE = SDVAE.to(device)
+    SDVAE.eval()
+    logging.info(f"VAE loaded from {config.autoencoder.pretrained_path}")
 
     @torch.cuda.amp.autocast()
     def encode(_batch):
-        return autoencoder.encode(_batch)
+        return SDVAE.encode(_batch, scale_factor=config.autoencoder.scaler)["posterior"]
 
     @torch.cuda.amp.autocast()
     def decode(_batch):
-        return autoencoder.decode(_batch)
+        return SDVAE.decode(_batch, scale_factor=config.autoencoder.scaler)
 
     def decode_large_batch(_batch):
         decode_mini_batch_size = 50  # use a small batch size since the decoder is large

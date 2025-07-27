@@ -1,0 +1,85 @@
+vae:
+
+  ### VAE Structure ###
+  img_size: 256
+  in_channels: 3
+  out_channels: 3
+  latent_channels: 16
+  residual_layers_per_block: 2
+  attention_layers: 1
+  attention_residual_connections: True
+  post_encoder_latent_proj: True
+  pre_decoder_latent_proj: True
+  vae_channels_per_block:
+    - 128
+    - 128
+    - 256
+    - 256
+    - 512
+  vae_up_down_factor: 2
+  vae_up_down_kernel_size: 3
+
+  ### Additional VQ Configs ###
+  quantize: False
+  codebook_size: 16384
+  vq_embed_dim: 4
+  commitment_beta: 0.25
+
+unet:
+
+  ### UNET Block Structure ###
+  down_block_types:
+    - AttnDown
+    - AttnDown
+    - AttnDown
+    - Down
+
+  mid_block_types: AttnMid
+
+  up_block_types:
+    - Up
+    - AttnUp
+    - AttnUp
+    - AttnUp
+
+  unet_channels_per_block:
+    - 320
+    - 640
+    - 1280
+    - 1280
+
+  unet_residual_layers_per_block: 2
+  unet_up_down_factor: 2
+  unet_up_down_kernel_size: 3
+  transformer_blocks_per_layer: 1
+  transformer_dim_mult: 4
+  attention_bias: False
+  attention_head_dim: 8
+
+  ### Time Embedding Config ###
+  time_embed_start_dim: 320
+  time_embed_proj_dim: 1280
+  time_embed_requires_grad: True
+
+  ### Text Conditioning Config ###
+  text_conditioning_hf_model: "openai/clip-vit-large-patch14"
+  text_conditioning: False
+  text_embed_dim:  768
+
+  ### Class Embedding Config ###
+  class_conditioning: False
+  class_embed_dim: 512
+  num_classes: 1000
+
+  ### General Config ###
+  pre_encoded_text: False
+  groupnorm_groups: 32
+  norm_eps: 0.000001
+  dropout: 0.0
+
+scaling_constants:
+
+  #### Precomputed Constants ###
+  celeba256: 0.9010
+  imagenet: 0.9515730
+  conceptual_captions: 0.9091397

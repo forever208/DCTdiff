@@ -11,6 +11,13 @@ def get_config():
 
     config.seed = 1234
     config.pred = 'noise_pred'
+    config.z_shape = (4, 32, 32)
+
+    config.autoencoder = d(
+        pretrained_path='/data/clusterfs/mld/users/lanliu/mang/LDM_exps/celeba256_SDVAE_bf16_b48_f8d4_flip_600k/SDVAE/checkpoint_570000/model.safetensors',
+        scaler=0.464370,
+        ldm_config_path='/data/scratch/U-ViT2/configs/ldm_f8d4.yaml',
+    )
 
     config.train = d(
         n_steps=500000,
@@ -23,20 +30,21 @@ def get_config():
 
     config.optimizer = d(
         name='adamw',
-        lr=0.0003,
+        lr=0.0002,
         weight_decay=0.03,
-        betas=(0.99, 0.999),
+        betas=(0.99, 0.99),
     )
 
     config.lr_scheduler = d(
         name='customized',
-        warmup_steps=50000
+        warmup_steps=5000
     )
 
     config.nnet = d(
         name='uvit',
         img_size=32,
         patch_size=2,
+        in_chans=4,
         embed_dim=512,
         depth=12,
         num_heads=8,
@@ -47,17 +55,18 @@ def get_config():
     )
 
     config.dataset = d(
-        name='cifar10',
-        path='/data/scratch/datasets/cifar10',  # /home/mang/Downloads/cifar10
+        name='celeba256_features',
+        path='/data/scratch/datasets/celeba256_latents/celeba256_SDVAE_f8_latents_570k',
+        resolution=256,
     )
 
     config.sample = d(
-        sample_steps=100,
-        n_samples=50000,
-        mini_batch_size=500,
-        algorithm='euler_maruyama_ode',
-        path='',  # if not none, generated images will be saved into this folder
-        save_npz=''  # leave it none in training; set the npz file path during eval
+        sample_steps=50,
+        n_samples=10000,
+        mini_batch_size=25,  # the decoder is large
+        algorithm='dpm_solver',
+        path='/data/scratch/samples1',  # generated images will be saved into this folder for FID eval
+        save_npz=''  # save generated sample if not None (used for precision/recall computation)
     )
 
     return config

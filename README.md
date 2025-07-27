@@ -63,19 +63,25 @@ Training speed and memory of U-ViT-H/2 on ImageNet 256x256 using a batch size of
 ## Dependency
 
 ```sh
-conda create -n uvit2 python==3.9
-conda activate uvit2
+conda create -n uvit python==3.9.0
+conda activate uvit
 
-pip install matplotlib
-pip install accelerate==0.33.0  (auto install pytorch 2.4)
-pip install absl-py ml_collections einops wandb ftfy==6.1.1 transformers==4.23.1
-pip install opencv-python
-pip install scipy
-pip install tqdm
-pip install Pillow
+pip install matplotlib==3.9.1
+pip install accelerate==0.33.0
+pip install absl-py==2.1.0
+pip install ml_collections==0.1.1
+pip install einops==0.8.0
+pip install wandb==0.17.5
+pip install ftfy==6.1.1
+pip install transformers==4.23.1
+pip install opencv-python==4.10.0.84
+pip install scipy==1.13.1
+pip install tqdm==4.67.0
+pip install pillow==11.0.0
+pip install torch-dct==0.1.6
 
 # xformers is optional, but it would greatly speed up the attention computation.
-pip install -U xformers
+pip install xformers==0.0.27.post2  # (auto install pytorch 2.4)
 pip install torchvision==0.19.0
 ```
 

@@ -16,9 +16,13 @@ from tools.fid_score import calculate_fid_given_paths
 from absl import logging
 import builtins
 import os
-import libs.autoencoder
+from libs.config import LDMConfig
+from libs.vae import VAE
 from datetime import timedelta
 from accelerate import InitProcessGroupKwargs
+from safetensors.torch import load_file
+import yaml
+import shutil
 
 
 def train(config):
@@ -63,21 +67,30 @@ def train(config):
 
     # wrap data_loader and model with accelerator for distributed training
     nnet, nnet_ema, optimizer, train_dataset_loader = accelerator.prepare(
-        train_state.nnet, train_state.nnet_ema, train_state.optimizer, train_dataset_loader)
+        train_state.nnet, train_state.nnet_ema, train_state.optimizer, train_dataset_loader
+    )
     lr_scheduler = train_state.lr_scheduler
     train_state.resume(config.ckpt_root)
 
     # load AutoEncoder
-    autoencoder = libs.autoencoder.get_model(config.autoencoder.pretrained_path)
-    autoencoder.to(device)
+    with open(config.autoencoder.ldm_config_path, "r") as f:
+        vae_config_file = yaml.safe_load(f)
+        vae_config = LDMConfig(**vae_config_file["vae"])
+
+    SDVAE = VAE(vae_config)
+    state_dict = load_file(config.autoencoder.pretrained_path)  # load safetensor
+    SDVAE.load_state_dict(state_dict, strict=True)
+    SDVAE = SDVAE.to(device)
+    SDVAE.eval()
+    logging.info(f"VAE loaded from {config.autoencoder.pretrained_path}")
 
     @ torch.cuda.amp.autocast()
     def encode(_batch):
-        return autoencoder.encode(_batch)
+        return SDVAE.encode(_batch, scale_factor=config.autoencoder.scaler)["posterior"]
 
     @ torch.cuda.amp.autocast()
     def decode(_batch):
-        return autoencoder.decode(_batch)
+        return SDVAE.decode(_batch, scale_factor=config.autoencoder.scaler)
 
     def get_data_generator():
         while True:
@@ -90,46 +103,20 @@ def train(config):
     score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE())
     score_model_ema = sde.ScoreModel(nnet_ema, pred=config.pred, sde=sde.VPSDE())
 
+
     def train_step(_batch):
         _metrics = dict()
         optimizer.zero_grad()
 
-        """GFLOPs calculation (set batch_size = 1)"""
-        # flops, params = profile(autoencoder, inputs=(_batch, 'encode'))
-        # Encoder_gflops = flops / 1e9
-        # print(f"VAE encoder gFLOPs: {Encoder_gflops}")
-        # print(f"number of VAE encoder parameters: {params}")
-        #
-        # if config.dataset.resolution == 256:
-        #     eps = torch.ones((1, 4, 32, 32)).to(_batch.device)
-        # elif config.dataset.resolution == 512:
-        #     eps = torch.ones((1, 4, 64, 64)).to(_batch.device)
-        # else:
-        #     raise ValueError
-        #
-        # flops, params = profile(autoencoder, inputs=(eps, 'decode'))
-        # Decoder_gflops = flops / 1e9
-        # print(f"VAE decoder gFLOPs: {Decoder_gflops}")
-        # print(f"number of VAE decoder parameters: {params}")
-        #
-        # t = torch.ones((_batch.shape[0])).to(_batch.device)
-        # z = encode(_batch)
-        # flops, params = profile(nnet, inputs=(z, t))
-        # Diff_gflops = flops / 1e9
-        # print(f"Diffusion gFLOPs: {Diff_gflops}")
-        # print(f"number of parameters: {params}")
-        # print(f"total training gFLOPs {Encoder_gflops + Diff_gflops}")
-        # print(f"total inference gFLOPs {Decoder_gflops} + NFE * {Diff_gflops}")
-        # raise ValueError
-
         if config.train.mode == 'uncond':
-            _z = autoencoder.sample(_batch) if 'feature' in config.dataset.name else encode(_batch)
+            _z = SDVAE.sample(_batch, config.autoencoder.scaler) if 'feature' in config.dataset.name else encode(_batch)
             loss = sde.LSimple(score_model, _z, pred=config.pred)
         elif config.train.mode == 'cond':
-            _z = autoencoder.sample(_batch[0]) if 'feature' in config.dataset.name else encode(_batch[0])
+            _z = SDVAE.sample(_batch[0], config.autoencoder.scaler) if 'feature' in config.dataset.name else encode(_batch[0])
             loss = sde.LSimple(score_model, _z, pred=config.pred, y=_batch[1])
         else:
             raise NotImplementedError(config.train.mode)
+
         _metrics['loss'] = accelerator.gather(loss.detach()).mean()
         accelerator.backward(loss.mean())
         optimizer.step()
@@ -139,10 +126,7 @@ def train(config):
         return dict(lr=train_state.optimizer.param_groups[0]['lr'], **_metrics)
 
 
-    def eval_step(n_samples, sample_steps, algorithm):
-        logging.info(f'eval_step: n_samples={n_samples}, sample_steps={sample_steps}, algorithm={algorithm}, '
-                     f'mini_batch_size={config.sample.mini_batch_size}')
-
+    def eval_step(n_samples, sample_steps, algorithm, path):
         def sample_fn(_n_samples):
             _z_init = torch.randn(_n_samples, *config.z_shape, device=device)
             if config.train.mode == 'uncond':
@@ -151,51 +135,34 @@ def train(config):
                 kwargs = dict(y=dataset.sample_label(_n_samples, device=device))
             else:
                 raise NotImplementedError
-
             if algorithm == 'euler_maruyama_sde':
                 _z = sde.euler_maruyama(sde.ReverseSDE(score_model_ema), _z_init, sample_steps, **kwargs)
             elif algorithm == 'euler_maruyama_ode':
                 _z = sde.euler_maruyama(sde.ODE(score_model_ema), _z_init, sample_steps, **kwargs)
             elif algorithm == 'dpm_solver':
                 noise_schedule = NoiseScheduleVP(schedule='linear')
-                model_fn = model_wrapper(
-                    score_model_ema.noise_pred,
-                    noise_schedule,
-                    time_input_type='0',
-                    model_kwargs=kwargs
-                )
+                model_fn = model_wrapper(score_model_ema.noise_pred, noise_schedule, time_input_type='0', model_kwargs=kwargs)
                 dpm_solver = DPM_Solver(model_fn, noise_schedule)
-                _z = dpm_solver.sample(
-                    _z_init,
-                    steps=sample_steps,
-                    eps=1e-4,
-                    adaptive_step_size=False,
-                    fast_version=True,
-                )
+                _z = dpm_solver.sample(_z_init, steps=sample_steps, eps=1e-4, adaptive_step_size=False, fast_version=True,)
             else:
                 raise NotImplementedError
             return decode(_z)
 
-        with tempfile.TemporaryDirectory() as temp_path:
-            path = config.sample.path or temp_path
-            if accelerator.is_main_process:
-                os.makedirs(path, exist_ok=True)
-            utils.sample2dir(accelerator, path, n_samples, config.sample.mini_batch_size, sample_fn, dataset.unpreprocess)
+        logging.info(f'eval_step: n_samples={n_samples}, sample_steps={sample_steps}, algorithm={algorithm}, mini_batch_size={config.sample.mini_batch_size}')
+        if accelerator.is_main_process:
+            os.makedirs(path, exist_ok=True)
+        # generate samples and compute FID
+        utils.sample2dir(accelerator, path, n_samples, config.sample.mini_batch_size, sample_fn, dataset.unpreprocess)
+        if accelerator.is_main_process:
+            _fid = calculate_fid_given_paths((dataset.fid_stat, path))
+            logging.info(f'step={train_state.step} fid{n_samples}={_fid}')
+            with open(os.path.join(config.workdir, f'eval_{algorithm}_{n_samples}.log'), 'a') as f:
+                print(f'step={train_state.step} fid{n_samples}={_fid}', file=f)
+            shutil.rmtree(path)  # remove all generated images
 
-            _fid = 0
-            if accelerator.is_main_process:
-                _fid = calculate_fid_given_paths((dataset.fid_stat, path))
-                logging.info(f'step={train_state.step} fid{n_samples}={_fid}')
-                with open(os.path.join(config.workdir, 'eval.log'), 'a') as f:
-                    print(f'step={train_state.step} fid{n_samples}={_fid}', file=f)
-                # wandb.log({f'fid{n_samples}': _fid}, step=train_state.step)
-            _fid = torch.tensor(_fid, device=device)
-            _fid = accelerator.reduce(_fid, reduction='sum')
 
-        return _fid.item()
-
+    ### start training, evaluation and visualization ###
     logging.info(f'Start fitting, step={train_state.step}, mixed_precision={config.mixed_precision}')
-    step_fid = []
     while train_state.step < config.train.n_steps:
         nnet.train()
         batch = tree_map(lambda x: x.to(device), next(data_generator))
@@ -205,9 +172,8 @@ def train(config):
         if accelerator.is_main_process and train_state.step % config.train.log_interval == 0:
             logging.info(utils.dct2str(dict(step=train_state.step, **metrics)))
             logging.info(config.workdir)
-            # wandb.log(metrics, step=train_state.step)
 
-        # generate images for visualization
+        ### generate images for visualization  ###
         if accelerator.is_main_process and train_state.step % config.train.eval_interval == 0:
             torch.cuda.empty_cache()
             logging.info('Save a grid of 16 images...')
@@ -227,20 +193,9 @@ def train(config):
                 z = sde.euler_maruyama(sde.ODE(score_model_ema), z_init, config.sample.sample_steps, **kwargs)
             elif config.sample.algorithm == 'dpm_solver':
                 noise_schedule = NoiseScheduleVP(schedule='linear')
-                model_fn = model_wrapper(
-                    score_model_ema.noise_pred,
-                    noise_schedule,
-                    time_input_type='0',
-                    model_kwargs=kwargs
-                )
+                model_fn = model_wrapper(score_model_ema.noise_pred, noise_schedule, time_input_type='0', model_kwargs=kwargs)
                 dpm_solver = DPM_Solver(model_fn, noise_schedule)
-                z = dpm_solver.sample(
-                    z_init,
-                    steps=config.sample.sample_steps,
-                    eps=1e-4,
-                    adaptive_step_size=False,
-                    fast_version=True,
-                )
+                z = dpm_solver.sample(z_init,steps=config.sample.sample_steps, eps=1e-4, adaptive_step_size=False, fast_version=True,)
             else:
                 raise NotImplementedError
 
@@ -250,29 +205,31 @@ def train(config):
             torch.cuda.empty_cache()
         accelerator.wait_for_everyone()
 
-        # save ckpt and compute FID
-        if train_state.step >= 100000 and train_state.step % config.train.save_interval == 0:
+        ### save ckpt and compute FID ###
+        if train_state.step >= 50000 and train_state.step % config.train.save_interval == 0:
             torch.cuda.empty_cache()
             logging.info(f'Save and eval checkpoint {train_state.step}...')
             if accelerator.local_process_index == 0:
                 train_state.save(os.path.join(config.ckpt_root, f'{train_state.step}.ckpt'))
             accelerator.wait_for_everyone()
 
-            # calculate fid of the saved checkpoint
-            fid = eval_step(n_samples=config.sample.n_samples, sample_steps=config.sample.sample_steps, algorithm=config.sample.algorithm)
-            step_fid.append((train_state.step, fid))
+            # calculate fid using DPM-Solver (NFE=50)
+            logging.info(f'using scaling factor: {config.autoencoder.scaler}')
+            eval_step(n_samples=config.sample.n_samples, sample_steps=50,
+                      algorithm='dpm_solver', path=f'{config.sample.path}_dpm')
             torch.cuda.empty_cache()
-        accelerator.wait_for_everyone()
+            accelerator.wait_for_everyone()
+
+            # calculate fid using Euler ODE Solver (NFE=100)
+            eval_step(n_samples=config.sample.n_samples, sample_steps=100,
+                      algorithm='euler_maruyama_ode', path=f'{config.sample.path}_euler_ode')
+            torch.cuda.empty_cache()
+            accelerator.wait_for_everyone()
 
     logging.info(f'Finish fitting, step={train_state.step}')
-    logging.info(f'step_fid: {step_fid}')
-    step_best = sorted(step_fid, key=lambda x: x[1])[0][0]
-    logging.info(f'step_best: {step_best}')
-    train_state.load(os.path.join(config.ckpt_root, f'{step_best}.ckpt'))
     del metrics
     accelerator.wait_for_everyone()
-    eval_step(n_samples=config.sample.n_samples, sample_steps=config.sample.sample_steps, algorithm=config.sample.algorithm)
-
+    logging.info(f'all done!')
 
 
 from absl import flags
@@ -280,7 +237,6 @@ from absl import app
 from ml_collections import config_flags
 import sys
 from pathlib import Path
-
 
 FLAGS = flags.FLAGS
 config_flags.DEFINE_config_file("config", None, "Training configuration.", lock_config=False)
