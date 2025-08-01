@@ -75,7 +75,7 @@ In our experiments, we use jpg images and the fid_stats is computed from the jpg
 
 
 * CIFAR-10 32x32: we provide a script (`tools/download_cifar10.py`) to download CIFAR-10
-* CelebA 64x64: download the [dataset](https://drive.usercontent.google.com/download?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM&authuser=0), then do center crop to 64x64 using the script `tools/dataset_celeba64.py`.
+* CelebA 64x64: download the [dataset](https://drive.usercontent.google.com/download?id=0B7EVK8r0v71pZjFTYXZWM3FlRnM&authuser=0), then do center crop to 64x64 using the script `tools/dataset_celeba64.py`. Alternatively, you can directly download our processed one from [GoogleDrive](https://drive.google.com/file/d/1hWn6TOr9uA0dr3X5z89Js9ZohspOc0QZ/view?usp=drive_link) 
 * ImageNet 64x64: download the [dataset](https://www.kaggle.com/datasets/ayaroshevskiy/downsampled-imagenet-64x64), use the `train` folder for training.
 * FFHQ 128x128: download the [dataset](https://www.kaggle.com/datasets/greatgamedota/ffhq-face-data-set)
 * FFHQ 256x256: download the [dataset](https://www.kaggle.com/datasets/rahulbhalley/ffhq-256x256)
