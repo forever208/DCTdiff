@@ -83,9 +83,9 @@ def evaluate(config):
             _cond = nnet(x, timesteps, y=y)
             _uncond = nnet(x, timesteps, y=torch.tensor([dataset.K] * x.size(0), device=device))
             return _cond + config.sample.scale * (_cond - _uncond)
-        score_model = sde.ScoreModel(cfg_nnet, pred=config.pred, sde=sde.VPSDE())
+        score_model = sde.ScoreModel(cfg_nnet, pred=config.pred, sde=sde.VPSDE(), eps_scaler=config.eps_scaler)
     else:
-        score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE())
+        score_model = sde.ScoreModel(nnet, pred=config.pred, sde=sde.VPSDE(), eps_scaler=config.eps_scaler)
 
     logging.info(config.sample)
     assert os.path.exists(dataset.fid_stat)
@@ -153,12 +153,14 @@ config_flags.DEFINE_config_file(
 flags.mark_flags_as_required(["config"])
 flags.DEFINE_string("nnet_path", None, "The nnet to evaluate.")
 flags.DEFINE_string("output_path", None, "The path to output log.")
+flags.DEFINE_string("eps_scaler", None, "Epsilon Scaling.")
 
 
 def main(argv):
     config = FLAGS.config
     config.nnet_path = FLAGS.nnet_path
     config.output_path = FLAGS.output_path
+    config.eps_scaler = FLAGS.eps_scaler
     evaluate(config)
 
 

@@ -190,13 +190,15 @@ class ScoreModel(object):
         The forward process is q(x_[0,T])
     """
 
-    def __init__(self, nnet: nn.Module, pred: str, sde: SDE, T=1):
+    def __init__(self, nnet: nn.Module, pred: str, sde: SDE, T=1, eps_scaler=1.0):
         assert T == 1
         self.nnet = nnet
         self.pred = pred
         self.sde = sde
         self.T = T
+        self.eps_scaler = float(eps_scaler)
         print(f'ScoreModel with pred={pred}, sde={sde}, T={T}')
+        print(f'using eps_scaler = {eps_scaler} for sampling')
 
     def predict(self, xt, t, **kwargs):
         if not isinstance(t, torch.Tensor):
@@ -214,6 +216,9 @@ class ScoreModel(object):
             noise_pred = - stp(self.sde.snr(t).sqrt(), pred) + stp(self.sde.cum_beta(t).rsqrt(), xt)
         else:
             raise NotImplementedError
+
+        noise_pred = noise_pred / self.eps_scaler
+
         return noise_pred
 
     def x0_pred(self, xt, t, **kwargs):
