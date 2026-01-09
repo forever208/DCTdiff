@@ -14,15 +14,15 @@ def get_config():
     config.z_shape = (16, 16, 16)
 
     config.autoencoder = d(
-        pretrained_path='/home/mning/LDM_exps/celeba256_SDVAE_bf16_b48_f16d16_flip/SDVAE/checkpoint_610000/model.safetensors',
-        scaler=0.18475,  # 99.99pct=0.21697, 99.999pct=0.18475, 99.9999pct=0.15928
-        ldm_config_path='configs/ldm_f16d16.yaml',
+        pretrained_path='/leonardo_work/EUHPC_B29_014/LDM_exps/imagenet256_SDVAE_bf16_b128_f16_flip_400k/SDVAE/checkpoint_200000/model.safetensors',
+        scaler=0.4208,
+        ldm_config_path='/leonardo_work/EUHPC_B29_014/U-ViT2/configs/ldm_f16d16.yaml',
     )
 
     config.train = d(
-        n_steps=500000,
-        batch_size=256,
-        mode='uncond',
+        n_steps=300000,
+        batch_size=1024,
+        mode='cond',
         log_interval=100,
         eval_interval=25000,
         save_interval=25000,
@@ -51,22 +51,27 @@ def get_config():
         mlp_ratio=4,
         qkv_bias=False,
         mlp_time_embed=False,
-        num_classes=-1,
+        num_classes=1001,
+        use_checkpoint=False,
     )
 
     config.dataset = d(
-        name='celeba256_features',
-        path='/projects/prjs0865/datasets/celeba256_SDVAE_f16_latents',
+        name='imagenet256_features',
+        path='/leonardo_work/EUHPC_B29_014/datasets/imagenet256_latents/imagenet256_SDVAE_f16_280k',
         resolution=256,
+        cfg=True,
+        p_uncond=0.15
     )
 
     config.sample = d(
-        sample_steps=50,
-        n_samples=50000,
-        mini_batch_size=25,  # the decoder is large
-        algorithm='dpm_solver',
-        path='/projects/prjs0865/samples',  # generated images will be saved into this folder for FID eval
-        save_npz=''  # save generated sample if not None (used for precision/recall computation)
+        sample_steps=100,
+        n_samples=10000,
+        mini_batch_size=50,  # the decoder is large
+        algorithm='euler_maruyama_ode',
+        path='/leonardo_work/EUHPC_B29_014/samples10',  # generated images will be saved into this folder for FID eval
+        save_npz='',  # save generated sample if not None (used for precision/recall computation)
+        cfg=True,
+        scale=0.4,
     )
 
     return config

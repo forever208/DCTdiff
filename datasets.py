@@ -138,7 +138,7 @@ class FeatureDataset_celeba256(Dataset):
         self.path = path
 
     def __len__(self):
-        return 30000
+        return 30000 * 2  # consider the random flip
 
     def __getitem__(self, idx):
         path = os.path.join(self.path, f'{idx}.npy')
@@ -165,7 +165,7 @@ class ImageNet256Features(DatasetFactory):  # the moments calculated by Stable D
 
     @property
     def fid_stat(self):
-        return f'assets/fid_stats/fid_stats_imagenet256_guided_diffusion.npz'
+        return f'/leonardo_work/EUHPC_B29_014/U-ViT2/assets/fid_stats/fid_stats_imagenet256_guided_diffusion.npz'
 
     def sample_label(self, n_samples, device):
         return torch.randint(0, 1000, (n_samples,), device=device)

@@ -14,15 +14,15 @@ def get_config():
     config.z_shape = (16, 16, 16)
 
     config.autoencoder = d(
-        pretrained_path='/leonardo_work/EUHPC_B29_014/LDM_exps/celeba256_b48_f16_ESM_delta02_ftVAE_log001/SDVAE/checkpoint_320000/model.safetensors',
-        scaler=0.4208,
+        pretrained_path='/leonardo_work/EUHPC_B29_014/LDM_exps/imagenet256_SDVAE_bf16_b128_f16_flip_400k/SDVAE/checkpoint_280000/model.safetensors',
+        scaler=0.9296,
         ldm_config_path='/leonardo_work/EUHPC_B29_014/U-ViT2/configs/ldm_f16d16.yaml',
     )
 
     config.train = d(
-        n_steps=150000,
-        batch_size=256,
-        mode='uncond',
+        n_steps=300000,
+        batch_size=1024,
+        mode='cond',
         log_interval=100,
         eval_interval=25000,
         save_interval=25000,
@@ -51,13 +51,15 @@ def get_config():
         mlp_ratio=4,
         qkv_bias=False,
         mlp_time_embed=False,
-        num_classes=-1,
+        num_classes=1001,
+        use_checkpoint=False,
     )
 
     config.dataset = d(
-        name='celeba256_features',
-        path='/leonardo_work/EUHPC_B29_014/datasets/celeba256_latents/celeba256_f16_ESM_delta02_ftVAE_log001_320k',
-        resolution=256,
+        name='imagenet256_features',
+        path='/leonardo_work/EUHPC_B29_014/datasets/imagenet256_latents/imagenet256_SDVAE_f16_280k',
+        cfg=True,
+        p_uncond=0.15
     )
 
     config.sample = d(
@@ -65,8 +67,10 @@ def get_config():
         n_samples=10000,
         mini_batch_size=50,  # the decoder is large
         algorithm='euler_maruyama_ode',
-        path='/leonardo_work/EUHPC_B29_014/samples2',  # generated images will be saved into this folder for FID eval
-        save_npz=''  # save generated sample if not None (used for precision/recall computation)
+        path='/leonardo_work/EUHPC_B29_014/samples10',  # generated images will be saved into this folder for FID eval
+        save_npz='',  # save generated sample if not None (used for precision/recall computation)
+        cfg=True,
+        scale=0.4,
     )
 
     return config
