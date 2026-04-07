@@ -89,7 +89,7 @@ Download `fid_stats` directory from this [link](https://drive.google.com/drive/f
 Put the downloaded `fid_stats` into directory `assets/fid_stats`, the path of `fid_stats` is set in the script `datasets.py` for FID comutation in both training and inference.
 
 Using [pytorch-FID](https://github.com/mseitzer/pytorch-fid), you can also 
-* generate your own fid_stats for a given dataset
+* generate your own fid_stats for a given dataset.
 * compute the FID whenever you need.
 
 ```shell
