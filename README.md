@@ -151,7 +151,7 @@ accelerate launch --multi_gpu --num_processes 4 --mixed_precision fp16 eval.py -
 
 
 ## References
-If you find the code useful for your research, please consider citing
+If you find the code useful for your research, please consider citing.
 ```bib
 @article{ning2024dctdiff,
   title={DCTdiff: Intriguing Properties of Image Generative Modeling in the DCT Space},
