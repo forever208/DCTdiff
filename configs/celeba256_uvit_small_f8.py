@@ -16,7 +16,6 @@ def get_config():
     config.autoencoder = d(
         pretrained_path='/data/clusterfs/mld/users/lanliu/mang/LDM_exps/celeba256_SDVAE_bf16_b48_f8d4_flip_600k/SDVAE/checkpoint_570000/model.safetensors',
         scaler=0.464370,
-        ldm_config_path='/data/scratch/U-ViT2/configs/ldm_f8d4.yaml',
     )
 
     config.train = d(

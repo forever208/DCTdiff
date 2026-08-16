@@ -10,10 +10,7 @@ import tempfile
 from dpm_solver_pytorch import NoiseScheduleVP, model_wrapper, DPM_Solver
 from absl import logging
 import builtins
-from libs.config import LDMConfig
-from libs.vae import VAE
-from safetensors.torch import load_file
-import yaml
+from libs.vae_f8 import load_vae_f8
 import shutil
 
 
@@ -45,21 +42,18 @@ def evaluate(config):
     accelerator.unwrap_model(nnet).load_state_dict(torch.load(config.nnet_path, map_location='cpu'))
     nnet.eval()
 
-    # load AutoEncoder
-    with open(config.autoencoder.ldm_config_path, "r") as f:
-        vae_config_file = yaml.safe_load(f)
-        vae_config = LDMConfig(**vae_config_file["vae"])
-
-    SDVAE = VAE(vae_config)
-    state_dict = load_file(config.autoencoder.pretrained_path)  # load safetensor
-    SDVAE.load_state_dict(state_dict, strict=True)
-    SDVAE = SDVAE.to(device)
-    SDVAE.eval()
-    logging.info(f"VAE loaded from {config.autoencoder.pretrained_path}")
+    # Load the same frozen F8 VAE used by LDM training.
+    SDVAE = load_vae_f8(config.autoencoder.pretrained_path, device=device)
+    logging.info(
+        f"F8 VAE loaded from {config.autoencoder.pretrained_path}; "
+        f"latent scaler={config.autoencoder.scaler}"
+    )
 
     @torch.cuda.amp.autocast()
     def encode(_batch):
-        return SDVAE.encode(_batch, scale_factor=config.autoencoder.scaler)["posterior"]
+        return SDVAE.encode_images(
+            _batch, scale_factor=config.autoencoder.scaler
+        )
 
     @torch.cuda.amp.autocast()
     def decode(_batch):
