@@ -11,3 +11,4 @@ transformers==4.23.1
 opencv-python==4.11.0.86
 scipy==1.15.3
 xformers==0.0.34
+torch-dct==0.1.6

@@ -88,7 +88,12 @@ def train(config):
 
     def get_data_generator():
         while True:
-            for data in tqdm(train_dataset_loader, disable=not accelerator.is_main_process, desc='epoch'):
+            for data in tqdm(
+                train_dataset_loader,
+                disable=not accelerator.is_main_process,
+                desc='epoch',
+                mininterval=5,
+            ):
                 yield data
 
     data_generator = get_data_generator()

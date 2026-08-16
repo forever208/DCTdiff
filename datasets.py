@@ -497,7 +497,10 @@ class Celeba256_features(DatasetFactory):
     def fid_stat(self):
         # specify the fid_stats file that will be used for FID computation during the training
         # generate the stats npz file by 'https://github.com/mseitzer/pytorch-fid'
-        return '/leonardo_work/EUHPC_B29_014/U-ViT2/assets/fid_stats/fid_stats_celeba256_jpg.npz'
+        return os.path.join(
+            os.path.dirname(__file__),
+            'assets/fid_stats/fid_stats_celeba256_jpg.npz',
+        )
 
     @property
     def has_label(self):
