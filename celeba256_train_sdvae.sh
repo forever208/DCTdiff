@@ -7,7 +7,7 @@ conda activate uvit
 export TORCH_HOME=/home/ningmang/torch_cache
 
 PROJECT_DIR=/home/ningmang/DCTdiff
-OUTPUT_DIR="$PROJECT_DIR/exps/celeba256_uvit_f8_sdvae_98k_stdx1"
+OUTPUT_DIR="$PROJECT_DIR/exps/celeba256_f8_sdvae_80k_stdx1"
 
 # log and error settings
 LOG_DIR="$OUTPUT_DIR/logs/$(date +%Y%m%d_%H%M%S)"

@@ -55,9 +55,12 @@ def evaluate(config):
             _batch, scale_factor=config.autoencoder.scaler
         )
 
-    @torch.cuda.amp.autocast()
     def decode(_batch):
-        return SDVAE.decode(_batch, scale_factor=config.autoencoder.scaler)
+        # This CelebA F8 decoder overflows under CUDA fp16 autocast.
+        with torch.autocast(device_type='cuda', enabled=False):
+            return SDVAE.decode(
+                _batch.float(), scale_factor=config.autoencoder.scaler
+            )
 
     def decode_large_batch(_batch):
         decode_mini_batch_size = 50  # use a small batch size since the decoder is large

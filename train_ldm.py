@@ -82,9 +82,12 @@ def train(config):
             _batch, scale_factor=config.autoencoder.scaler
         )
 
-    @ torch.cuda.amp.autocast()
     def decode(_batch):
-        return SDVAE.decode(_batch, scale_factor=config.autoencoder.scaler)
+        # This CelebA F8 decoder overflows under CUDA fp16 autocast.
+        with torch.autocast(device_type='cuda', enabled=False):
+            return SDVAE.decode(
+                _batch.float(), scale_factor=config.autoencoder.scaler
+            )
 
     def get_data_generator():
         while True:
@@ -212,12 +215,12 @@ def train(config):
                 train_state.save(os.path.join(config.ckpt_root, f'{train_state.step}.ckpt'))
             accelerator.wait_for_everyone()
 
-            # calculate fid using DPM-Solver (NFE=50)
-            logging.info(f'using scaling factor: {config.autoencoder.scaler}')
-            eval_step(n_samples=config.sample.n_samples, sample_steps=50,
-                      algorithm='dpm_solver', path=f'{config.sample.path}_dpm')
-            torch.cuda.empty_cache()
-            accelerator.wait_for_everyone()
+            # # calculate fid using DPM-Solver (NFE=50)
+            # logging.info(f'using scaling factor: {config.autoencoder.scaler}')
+            # eval_step(n_samples=config.sample.n_samples, sample_steps=50,
+            #           algorithm='dpm_solver', path=f'{config.sample.path}_dpm')
+            # torch.cuda.empty_cache()
+            # accelerator.wait_for_everyone()
 
             # calculate fid using Euler ODE Solver (NFE=100)
             eval_step(n_samples=config.sample.n_samples, sample_steps=100,

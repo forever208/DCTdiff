@@ -14,8 +14,8 @@ def get_config():
     config.z_shape = (4, 32, 32)
 
     config.autoencoder = d(
-        pretrained_path='/home/ningmang/vae/exps/celeba256_SDVAE/checkpoints/98000.ckpt',
-        scaler=0.07029,
+        pretrained_path='/home/ningmang/vae/exps/celeba256_SDVAE/checkpoints/80000.ckpt',
+        scaler=0.06931,
     )
 
     config.train = d(
@@ -55,7 +55,7 @@ def get_config():
 
     config.dataset = d(
         name='celeba256_features',
-        path='/mnt/vepfs/base2/stream/ningmang/datasets/celeba256_latents/SDVAE_98k',
+        path='/mnt/vepfs/base2/stream/ningmang/datasets/celeba256_latents/SDVAE_80k',
         resolution=256,
     )
 
@@ -64,7 +64,7 @@ def get_config():
         n_samples=50000,
         mini_batch_size=50,  # the decoder is large
         algorithm='euler_maruyama_ode',
-        path='/home/ningmang/DCTdiff/samples1',  # generated images will be saved into this folder for FID eval
+        path='/home/ningmang/DCTdiff/samples2',  # generated images will be saved into this folder for FID eval
         save_npz=''  # save generated sample if not None (used for precision/recall computation)
     )
 
