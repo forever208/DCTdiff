@@ -20,6 +20,26 @@ from libs.vae_f8 import load_vae_f8
 from datetime import timedelta
 from accelerate import InitProcessGroupKwargs
 import shutil
+import math
+import re
+
+
+def keep_best_checkpoint(ckpt_root, step, fid, best_fid, best_step):
+    current_ckpt = os.path.join(ckpt_root, f'{step}.ckpt')
+    if math.isfinite(fid) and fid < best_fid:
+        best_fid, best_step = fid, step
+        for name in os.listdir(ckpt_root):
+            if re.fullmatch(r'\d+\.ckpt', name) and name != f'{step}.ckpt':
+                shutil.rmtree(os.path.join(ckpt_root, name))
+
+        logging.info(f'New best checkpoint: step={step}, FID={fid}')
+    elif step != best_step:
+        shutil.rmtree(current_ckpt)
+        logging.info(
+            f'Removed checkpoint at step={step}; best is step={best_step}, '
+            f'FID={best_fid}'
+        )
+    return best_fid, best_step
 
 
 def train(config):
@@ -68,6 +88,7 @@ def train(config):
     )
     lr_scheduler = train_state.lr_scheduler
     train_state.resume(config.ckpt_root)
+    best_fid, best_step = math.inf, None
 
     # Load the frozen CelebA256 F8 VAE used to extract the feature dataset.
     SDVAE = load_vae_f8(config.autoencoder.pretrained_path, device=device)
@@ -161,6 +182,8 @@ def train(config):
             with open(os.path.join(config.workdir, f'eval_{algorithm}_{n_samples}.log'), 'a') as f:
                 print(f'step={train_state.step} fid{n_samples}={_fid}', file=f)
             shutil.rmtree(path)  # remove all generated images
+            return _fid
+        return None
 
 
     ### start training, evaluation and visualization ###
@@ -211,7 +234,7 @@ def train(config):
         if train_state.step >= 50000 and train_state.step % config.train.save_interval == 0:
             torch.cuda.empty_cache()
             logging.info(f'Save and eval checkpoint {train_state.step}...')
-            if accelerator.local_process_index == 0:
+            if accelerator.is_main_process:
                 train_state.save(os.path.join(config.ckpt_root, f'{train_state.step}.ckpt'))
             accelerator.wait_for_everyone()
 
@@ -223,9 +246,14 @@ def train(config):
             # accelerator.wait_for_everyone()
 
             # calculate fid using Euler ODE Solver (NFE=100)
-            eval_step(n_samples=config.sample.n_samples, sample_steps=100,
-                      algorithm='euler_maruyama_ode', path=f'{config.sample.path}_euler_ode')
+            fid = eval_step(n_samples=config.sample.n_samples, sample_steps=100,
+                            algorithm='euler_maruyama_ode', path=f'{config.sample.path}_euler_ode')
             torch.cuda.empty_cache()
+            accelerator.wait_for_everyone()
+            if accelerator.is_main_process:
+                best_fid, best_step = keep_best_checkpoint(
+                    config.ckpt_root, train_state.step, fid, best_fid, best_step
+                )
             accelerator.wait_for_everyone()
 
     logging.info(f'Finish fitting, step={train_state.step}')
